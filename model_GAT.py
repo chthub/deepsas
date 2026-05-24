@@ -1,112 +1,118 @@
 import torch
-from torch import nn, optim
+from torch import nn
 from torch.nn import functional as F
-import torch.utils.data as Data
-import numpy as np
+from torch.nn import Linear
 
-from torch_geometric.nn import Sequential, GATConv, TransformerConv
-from torch.nn import Linear, ReLU, Dropout
-from torch_geometric.nn.models import InnerProductDecoder, GAE, VGAE
-from torch_geometric.nn import GATConv, GAE
+from torch_geometric.nn import GATConv, GATv2Conv, GAE
+from torch_geometric.nn.models import InnerProductDecoder
 
 
-# Define GAT-based encoder for GAE
 class GATEncoder(torch.nn.Module):
-    def __init__(self, in_channels, out_channels):
-        super(GATEncoder, self).__init__()
-        self.conv1 = GATConv(in_channels, 32, heads=1, dropout=0.6)
-        self.conv2 = GATConv(32 * 1, out_channels, heads=1, concat=True, dropout=0.6)
+    """Two-layer single-head GAT encoder.
 
-    def forward(self, x, edge_index):
-        x = self.conv1(x, edge_index)
-        x = F.elu(x)
-        x = self.conv2(x, edge_index)
+    Parameters
+    ----------
+    in_channels, out_channels : int
+        Embedding sizes.
+    edge_dim : int or None
+        If None: original GATConv (edge weights ignored).
+        If an int: GATv2Conv layers that consume `edge_attr` of that dimension.
+    """
+
+    def __init__(self, in_channels, out_channels, edge_dim=None):
+        super().__init__()
+        self.use_edge_attr = edge_dim is not None
+        if self.use_edge_attr:
+            self.conv1 = GATv2Conv(in_channels, 32, heads=1, dropout=0.6,
+                                   edge_dim=edge_dim)
+            self.conv2 = GATv2Conv(32, out_channels, heads=1, concat=True,
+                                   dropout=0.6, edge_dim=edge_dim)
+        else:
+            self.conv1 = GATConv(in_channels, 32, heads=1, dropout=0.6)
+            self.conv2 = GATConv(32, out_channels, heads=1, concat=True,
+                                 dropout=0.6)
+
+    def forward(self, x, edge_index, edge_attr=None):
+        if self.use_edge_attr:
+            x = self.conv1(x, edge_index, edge_attr=edge_attr)
+            x = F.elu(x)
+            x = self.conv2(x, edge_index, edge_attr=edge_attr)
+        else:
+            x = self.conv1(x, edge_index)
+            x = F.elu(x)
+            x = self.conv2(x, edge_index)
         return x
 
-# Initialize GAE model with GAT encoder and move it to the GPU
+
 class GAEModel(GAE):
-    def __init__(self, in_channels, out_channels):
-        encoder = GATEncoder(in_channels, out_channels)
-        super(GAEModel, self).__init__(encoder)
+    """Graph autoencoder = GATEncoder + InnerProductDecoder.
+
+    This is the "graph autoencoder" referred to in Methods Section 1.3 of the
+    manuscript. It is distinct from the optional dimensionality-reduction
+    autoencoder in model_AE.py.
+    """
+
+    def __init__(self, in_channels, out_channels, edge_dim=None):
+        encoder = GATEncoder(in_channels, out_channels, edge_dim=edge_dim)
+        super().__init__(encoder)
+        self.use_edge_attr = edge_dim is not None
+
+    def encode(self, x, edge_index, edge_attr=None):
+        return self.encoder(x, edge_index, edge_attr=edge_attr)
 
     def get_attention_scores(self, data):
         x, edge_index = data.x, data.edge_index
-        # Pass data through the first GAT layer to get attention scores
-        _, (edge_index_selfloop, alpha) = self.encoder.conv1(x, edge_index, return_attention_weights=True)
-        # matrix shape: number of edges x number of heads
-        return edge_index_selfloop,alpha
-    
+        if self.use_edge_attr:
+            edge_attr = data.edge_attr
+            if edge_attr.dim() == 1:
+                edge_attr = edge_attr.unsqueeze(-1)
+            edge_attr = edge_attr.float()
+            _, (edge_index_selfloop, alpha) = self.encoder.conv1(
+                x, edge_index, edge_attr=edge_attr,
+                return_attention_weights=True)
+        else:
+            _, (edge_index_selfloop, alpha) = self.encoder.conv1(
+                x, edge_index, return_attention_weights=True)
+        return edge_index_selfloop, alpha
 
+
+# ----------------------------------------------------------------------------
+# Auxiliary encoder used in earlier prototyping; preserved for compatibility.
+# Not used in the production deepsas_v1.py pipeline.
+# ----------------------------------------------------------------------------
 class Encoder(torch.nn.Module):
     def __init__(self, dim=128):
         super().__init__()
         self.linear1 = Linear(dim, dim)
         self.linear2 = Linear(dim, dim)
-
-        # self loop is default，so also include the attention of self-loop
-        # delete self loop
         self.conv1 = GATConv(dim, dim, add_self_loops=False)
         self.conv2 = GATConv(dim, dim, add_self_loops=False)
-        
-        # self.conv1 = TransformerConv(dim, dim, heads=1)
-        # self.conv2 = TransformerConv(dim, dim, heads=1)
-
         self.act = torch.nn.CELU()
 
-    def cat(self, x_gene, x_cell, y):
+    def _cat(self, x_gene, x_cell, y):
         result = []
-        count_gene = 0
-        count_cell = 0
-
+        cg = cc = 0
         for i in y:
             if i:
-                result.append(x_gene[count_gene].view(1, -1))
-                count_gene += 1
+                result.append(x_gene[cg].view(1, -1)); cg += 1
             else:
-                result.append(x_cell[count_cell].view(1, -1))
-                count_cell += 1
-
-        result = torch.cat(result)
-        return result
+                result.append(x_cell[cc].view(1, -1)); cc += 1
+        return torch.cat(result)
 
     def forward(self, graph):
         x, edge_index, y = graph.x, graph.edge_index, graph.y
-
         x_gene = F.relu(self.linear1(x[y, :]))
-        x_cell = F.relu(self.linear2(x[torch.bitwise_not(y), :]))
-        x = self.cat(x_gene, x_cell, y)
-
-        x = self.conv1(x, edge_index)
-        # x = F.relu(x)
-        x = self.act(x)
+        x_cell = F.relu(self.linear2(x[~y, :]))
+        x = self._cat(x_gene, x_cell, y)
+        x = self.act(self.conv1(x, edge_index))
         x = F.dropout(x, training=self.training)
-        x = self.conv2(x, edge_index)
-        x = self.act(x)
+        x = self.act(self.conv2(x, edge_index))
         return x
-
-    def get_att(self, graph):
-        x, edge_index,  y = graph.x, graph.edge_index, graph.y
-        print(x.shape,y.shape)
-        x_gene = F.relu(self.linear1(x[y, :]))
-        x_cell = F.relu(self.linear2(x[torch.bitwise_not(y), :]))
-        x = self.cat(x_gene, x_cell, y)
-
-        x = self.conv1(x, edge_index)
-        x = F.relu(x)
-        x = F.dropout(x, training=self.training)
-
-        x, att = self.conv2(x, edge_index, return_attention_weights=True)
-
-        return x, att
 
 
 class SenGAE(GAE):
     def __init__(self):
-        super(SenGAE, self).__init__(encoder=Encoder(),
-                                     decoder=InnerProductDecoder())
+        super().__init__(encoder=Encoder(), decoder=InnerProductDecoder())
 
     def forward(self, graph, split=10):
-        z = self.encode(graph)
-        # adj_pred = self.decoder(z)
-        return z
-
+        return self.encode(graph)

@@ -209,24 +209,24 @@ class Sencell(torch.nn.Module):
 
     def getMultiLevelDistanceLoss(self, distances):
         d1, d2, d3 = distances
-        result = 0
+        result = torch.tensor(0., device=self.device, requires_grad=True)
 
         def distanceDiff(cluster_d, level):
             # cluster_d is a list of distances of the same type in the same cluster
             count = 0
-            result = 0
+            result = torch.tensor(0., device=self.device, requires_grad=True)
             for d in cluster_d:
-                result += (d-level).abs()
+                result = result + (d - level).abs().sum()
                 count += 1
             if count==0:
-                return 0
+                return torch.tensor(0., device=self.device, requires_grad=True)
             return result/count
 
         for cluster_d_1, cluster_d_2, cluster_d_3 in zip(d1, d2, d3):
-            result += distanceDiff(cluster_d_1, self.levels[0])
-            result += distanceDiff(cluster_d_2, self.levels[1])
-            result += distanceDiff(cluster_d_3, self.levels[2])
-            # result += distanceDiff(cluster_d_4, self.levels[3])
+            result = result + distanceDiff(cluster_d_1, self.levels[0])
+            result = result + distanceDiff(cluster_d_2, self.levels[1])
+            result = result + distanceDiff(cluster_d_3, self.levels[2])
+            # result = result + distanceDiff(cluster_d_4, self.levels[3])
 
         return result
 
