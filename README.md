@@ -74,7 +74,7 @@ nohup uv run python -u deepsas_v1.py --exp_name your_experiment --device_index 0
 DeepSAS follows a 4-step workflow:
 
 1. **Data Loading & Preprocessing**: Filters genes/cells and constructs the cell-gene graph
-2. **Initial Embedding Generation**: Creates embeddings via scanpy or autoencoder
+2. **Initial Embedding Generation**: Creates UMAP embeddings via scanpy 
 3. **Graph Attention Network Training**: Learns the graph structure with GATConv layers
 4. **Contrastive Learning**: Refines embeddings to identify senescent cells and genes
 
