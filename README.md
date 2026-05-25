@@ -138,6 +138,9 @@ DeepSAS accepts the following parameters:
 - `--exp_name`: Experiment name (used for output directory naming)
 - `--device_index`: CUDA device index to use
 - `--retrain`: Whether to retrain models or use saved ones
+- `--cell_type_col`: default: "clusters" celltype in which senCs is to be predicted
+- `--batch_col`: default: "Sample"
+- `--batch_remove`: default: True
 - `--timestamp`: Timestamp for the experiment (optional)
 
 ### Model Configuration
