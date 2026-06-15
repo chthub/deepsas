@@ -146,7 +146,7 @@ DeepSAS accepts the following parameters:
 ### Model Configuration
 - `--seed`: Random seed for reproducibility
 - `--n_genes`: Number of genes to use (3000, 8000 or full)
-- `--ccc`: Cell-cell edge type: type1 (binary), type2 (continuous), type3 (none)
+- `--ccc`: Cell-cell edge type: type1 (binary) or type3 (none)
 - `--gene_set`: Gene set to use (senmayo, fridman, etc.)
 - `--emb_size`: Embedding dimension size
 
