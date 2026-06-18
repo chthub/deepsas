@@ -100,50 +100,28 @@ def run_scanpy(adata_in, batch_remove=False, batch_name='Sample'):
     return a.obsm['X_umap']
 
 
-if args.use_autoencoder:
-    # Optional dimensionality-reduction autoencoder
-    if args.retrain:
-        gene_embed, cell_embed = reduction_AE(gene_cell, device)
-        print(gene_embed.shape, cell_embed.shape)
-        torch.save(gene_embed, os.path.join(args.output_dir, f'{args.exp_name}_gene.emb'))
-        torch.save(cell_embed, os.path.join(args.output_dir, f'{args.exp_name}_cell.emb'))
-    else:
-        print('Skipping AE training; loading saved embeddings.')
-        gene_embed = torch.load(os.path.join(args.output_dir, f'{args.exp_name}_gene.emb'))
-        cell_embed = torch.load(os.path.join(args.output_dir, f'{args.exp_name}_cell.emb'))
-
-    if args.retrain:
-        graph_nx = utils.add_nx_embedding(graph_nx, gene_embed, cell_embed)
-        graph_pyg = utils.build_graph_pyg(gene_cell, gene_embed, cell_embed,
-                                          edge_indexs, ccc_matrix)
-        torch.save(graph_nx, os.path.join(args.output_dir, f'{args.exp_name}_graphnx.data'))
-        torch.save(graph_pyg, os.path.join(args.output_dir, f'{args.exp_name}_graphpyg.data'))
-    else:
-        graph_nx = torch.load(os.path.join(args.output_dir, f'{args.exp_name}_graphnx.data'))
-        graph_pyg = torch.load(os.path.join(args.output_dir, f'{args.exp_name}_graphpyg.data'))
-else:
     # Default: UMAP-based initial embeddings (matches Methods 1.2)
-    if args.retrain:
-        cell_embed = run_scanpy(new_data.copy(),
+if args.retrain:
+    cell_embed = run_scanpy(new_data.copy(),
                                 batch_remove=args.batch_remove,
                                 batch_name=args.batch_col)
-        print('Cell embedding generated.')
-        gene_embed = run_scanpy(new_data.copy().T,
+    print('Cell embedding generated.')
+    gene_embed = run_scanpy(new_data.copy().T,
                                 batch_remove=False,
                                 batch_name=args.batch_col)
-        print('Gene embedding generated.')
-        cell_embed = torch.tensor(cell_embed)
-        gene_embed = torch.tensor(gene_embed)
-        graph_nx = utils.add_nx_embedding(graph_nx, gene_embed, cell_embed)
-        graph_pyg = utils.build_graph_pyg(gene_cell, gene_embed, cell_embed,
+    print('Gene embedding generated.')
+    cell_embed = torch.tensor(cell_embed)
+    gene_embed = torch.tensor(gene_embed)
+    graph_nx = utils.add_nx_embedding(graph_nx, gene_embed, cell_embed)
+    graph_pyg = utils.build_graph_pyg(gene_cell, gene_embed, cell_embed,
                                           edge_indexs, ccc_matrix)
-        torch.save(graph_nx, os.path.join(args.output_dir, f'{args.exp_name}_graphnx.data'))
-        torch.save(graph_pyg, os.path.join(args.output_dir, f'{args.exp_name}_graphpyg.data'))
-        print('graph_nx and graph_pyg saved.')
-    else:
-        print('Loading saved graph_nx and graph_pyg ...')
-        graph_nx = torch.load(os.path.join(args.output_dir, f'{args.exp_name}_graphnx.data'))
-        graph_pyg = torch.load(os.path.join(args.output_dir, f'{args.exp_name}_graphpyg.data'))
+    torch.save(graph_nx, os.path.join(args.output_dir, f'{args.exp_name}_graphnx.data'))
+    torch.save(graph_pyg, os.path.join(args.output_dir, f'{args.exp_name}_graphpyg.data'))
+    print('graph_nx and graph_pyg saved.')
+else:
+    print('Loading saved graph_nx and graph_pyg ...')
+    graph_nx = torch.load(os.path.join(args.output_dir, f'{args.exp_name}_graphnx.data'))
+    graph_pyg = torch.load(os.path.join(args.output_dir, f'{args.exp_name}_graphpyg.data'))
 logger.info("Part 2 done.")
 
 
