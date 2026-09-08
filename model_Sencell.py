@@ -263,18 +263,34 @@ def cell_optim(cellmodel, optimizer, sencell_dict, nonsencell_dict,dgl_graph, ar
     # optimizer = torch.optim.RMSprop(cellmodel.parameters(), lr=0.1, alpha=0.5,
     #                                 weight_decay=1e-4)
     if train:
+        if not sencell_dict:
+            raise ValueError('Cell optimization requires nonempty SnC candidates')
         cellmodel.train()
         sencell_dict=process_dict(sencell_dict,dgl_graph,args)
         nonsencell_dict=process_dict(nonsencell_dict,dgl_graph,args)
         
+        started = time.monotonic()
         for epoch in range(args.cell_optim_epoch):
             optimizer.zero_grad()
             sencell_dict, nonsencell_dict = cellmodel(
                 sencell_dict, nonsencell_dict, args.device)
             loss = cellmodel.loss(sencell_dict, nonsencell_dict)
-            print(loss.item())
+            if not torch.isfinite(loss):
+                raise FloatingPointError('Non-finite cell optimization loss')
+            cellmodel.last_loss = float(loss.detach())
             loss.backward()
             optimizer.step()
+            elapsed = time.monotonic() - started
+            eta = elapsed / (epoch + 1) * (args.cell_optim_epoch - epoch - 1)
+            print(f'{time.strftime("%Y-%m-%d %H:%M:%S")}: '
+                  f'Cell epoch {epoch + 1}/{args.cell_optim_epoch}, '
+                  f'loss={cellmodel.last_loss:.6f}, elapsed={elapsed:.1f}s, ETA={eta:.1f}s')
+
+        # Return embeddings evaluated with the final optimizer update applied.
+        cellmodel.eval()
+        with torch.no_grad():
+            sencell_dict, nonsencell_dict = cellmodel(
+                sencell_dict, nonsencell_dict, args.device)
 
         torch.save(cellmodel, os.path.join(
             args.output_dir, f'{args.exp_name}_cellmodel.pt'))

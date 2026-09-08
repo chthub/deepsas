@@ -23,3 +23,9 @@
 !Senescent_Tables_Explanation.md
 !Sampling_Tutorial.md
 !tutorial.ipynb
+!refinement.py
+!tests/
+!tests/test_refinement.py
+!tests/test_tables.py
+!scripts/
+!scripts/check_reviewer_example.py

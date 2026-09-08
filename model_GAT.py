@@ -19,18 +19,19 @@ class GATEncoder(torch.nn.Module):
         If an int: GATv2Conv layers that consume `edge_attr` of that dimension.
     """
 
-    def __init__(self, in_channels, out_channels, edge_dim=None):
+    def __init__(self, in_channels, out_channels, edge_dim=None,
+                 hidden_size=32, dropout=0.6):
         super().__init__()
         self.use_edge_attr = edge_dim is not None
         if self.use_edge_attr:
-            self.conv1 = GATv2Conv(in_channels, 32, heads=1, dropout=0.6,
+            self.conv1 = GATv2Conv(in_channels, hidden_size, heads=1, dropout=dropout,
                                    edge_dim=edge_dim)
-            self.conv2 = GATv2Conv(32, out_channels, heads=1, concat=True,
-                                   dropout=0.6, edge_dim=edge_dim)
+            self.conv2 = GATv2Conv(hidden_size, out_channels, heads=1, concat=True,
+                                   dropout=dropout, edge_dim=edge_dim)
         else:
-            self.conv1 = GATConv(in_channels, 32, heads=1, dropout=0.6)
-            self.conv2 = GATConv(32, out_channels, heads=1, concat=True,
-                                 dropout=0.6)
+            self.conv1 = GATConv(in_channels, hidden_size, heads=1, dropout=dropout)
+            self.conv2 = GATConv(hidden_size, out_channels, heads=1, concat=True,
+                                 dropout=dropout)
 
     def forward(self, x, edge_index, edge_attr=None):
         if self.use_edge_attr:
@@ -52,8 +53,10 @@ class GAEModel(GAE):
     autoencoder in model_AE.py.
     """
 
-    def __init__(self, in_channels, out_channels, edge_dim=None):
-        encoder = GATEncoder(in_channels, out_channels, edge_dim=edge_dim)
+    def __init__(self, in_channels, out_channels, edge_dim=None,
+                 hidden_size=32, dropout=0.6):
+        encoder = GATEncoder(in_channels, out_channels, edge_dim=edge_dim,
+                             hidden_size=hidden_size, dropout=dropout)
         super().__init__(encoder)
         self.use_edge_attr = edge_dim is not None
 

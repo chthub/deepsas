@@ -29,6 +29,9 @@ def parse_args():
                              'Default is the bundled example dataset.')
     parser.add_argument('--output_dir', type=str, default='./outputs',
                         help='Base output directory')
+    parser.add_argument('--epoch', type=int, default=None,
+                        help='Table generation only: load a specific iteration; '
+                             'default loads the final result')
     parser.add_argument('--exp_name', type=str, required=True,
                         help='Experiment name (used for output directory naming)')
     parser.add_argument('--device_index', type=int, default=0,
@@ -36,7 +39,7 @@ def parse_args():
     parser.add_argument('--retrain', action='store_true', default=False,
                         help='Whether to retrain the GAT or load the saved one')
     parser.add_argument('--timestamp', type=str, default='',
-                        help='Optional timestamp tag for the output directory')
+                        help='Legacy compatibility option; unused by deepsas_v1.py')
 
     # ---- Dataset-specific column names (new) ----
     parser.add_argument('--cell_type_col', type=str, default='clusters',
@@ -58,6 +61,8 @@ def parse_args():
                         choices=['type1', 'type3'],
                         help='Cell-cell edge type: type1 (binary), '
                              'type3 (no cell-cell edges)')
+    parser.add_argument('--ccc_threshold', type=float, default=0.8,
+                        help='CCC score threshold phi for binary cell-cell edges')
     parser.add_argument('--gene_set', type=str, default='full',
                         help='Senescence gene-set source (full, senmayo, fridman, '
                              'cellage, senmayo+fridman, senmayo+cellage, '
@@ -65,8 +70,8 @@ def parse_args():
     parser.add_argument('--emb_size', type=int, default=12,
                         help='Embedding dimension size')
     parser.add_argument('--use_autoencoder', action='store_true', default=False,
-                        help='Use the optional reduction autoencoder for initial '
-                             'embeddings instead of the default UMAP (Methods 1.2)')
+                        help='Legacy compatibility option; deepsas_v1.py uses UMAP '
+                             'and ignores this flag')
     parser.add_argument('--lr_panel', type=str, default=None,
                         help='Optional path to a user-supplied L-R panel CSV with '
                              'columns "ligand" and "receptor" (one row per L-R '
@@ -76,25 +81,41 @@ def parse_args():
     # ---- Training parameters ----
     parser.add_argument('--gat_epoch', type=int, default=30,
                         help='Number of epochs to train the GAT model')
+    parser.add_argument('--gat_learning_rate', type=float, default=0.001,
+                        help='Adam learning rate for the graph autoencoder')
+    parser.add_argument('--gat_hidden_size', type=int, default=32,
+                        help='Hidden width of the two-layer, single-head GAT')
+    parser.add_argument('--gat_dropout', type=float, default=0.6,
+                        help='Attention dropout during GAT training')
     parser.add_argument('--sencell_num', type=int, default=600,
-                        help='Number of senescent cells to use')
+                        help='Legacy compatibility option; unused by deepsas_v1.py '
+                             '(SnCs are selected by their score threshold)')
     parser.add_argument('--sengene_num', type=int, default=200,
-                        help='Number of senescence-associated genes to use')
+                        help='Legacy compatibility option; unused by deepsas_v1.py '
+                             '(SnG candidates start from the marker list)')
     parser.add_argument('--sencell_epoch', type=int, default=40,
-                        help='Number of epochs to train the Sencell model')
+                        help='Legacy compatibility option; deepsas_v1.py uses '
+                             '--max_iter and --cell_optim_epoch instead')
     parser.add_argument('--cell_optim_epoch', type=int, default=50,
                         help='Number of epochs for cell embedding optimization')
     parser.add_argument('--learning_rate', type=float, default=0.01,
                         help='Initial learning rate')
+    parser.add_argument('--weight_decay', type=float, default=0.001,
+                        help='Adam weight decay for cell embedding optimization')
+    parser.add_argument('--lr_decay', type=float, default=0.85,
+                        help='Learning-rate multiplier after each outer iteration')
+    parser.add_argument('--iqr_multiplier', type=float, default=1.5,
+                        help='Upper-fence multiplier for both SnC and SnG scores')
+    parser.add_argument('--min_snc_per_type', type=int, default=10,
+                        help='Minimum candidate SnCs retained in a cell type')
     parser.add_argument('--batch_id', type=int, default=0,
-                        help='Batch ID for processing')
+                        help='Legacy compatibility option; unused by deepsas_v1.py')
 
     # ---- Contrastive-learning convergence (new) ----
     parser.add_argument('--max_iter', type=int, default=10,
                         help='Hard ceiling on the number of contrastive '
-                             'refinement iterations (Methods 1.5). The loop '
-                             'normally exits well before this on the convergence '
-                             'criterion.')
+                             'refinement iterations; reaching this limit is '
+                             'reported separately from convergence.')
     parser.add_argument('--convergence_tol', type=float, default=0.99,
                         help='Jaccard tolerance for SnC and SnG sets between '
                              'adjacent iterations. The loop exits when both '
@@ -111,6 +132,22 @@ def parse_args():
         parser.error('--convergence_tol must be in (0, 1]')
     if args.max_iter < 1:
         parser.error('--max_iter must be >= 1')
+    if args.epoch is not None and args.epoch < 0:
+        parser.error('--epoch must be nonnegative')
+    if not (0 <= args.ccc_threshold <= 1):
+        parser.error('--ccc_threshold must be in [0, 1]')
+    if not (0 <= args.gat_dropout < 1):
+        parser.error('--gat_dropout must be in [0, 1)')
+    if args.gat_hidden_size < 1 or args.min_snc_per_type < 1:
+        parser.error('GAT hidden size and minimum SnCs per type must be positive')
+    for name in ('learning_rate', 'gat_learning_rate', 'lr_decay'):
+        value = getattr(args, name)
+        if not np.isfinite(value) or value <= 0:
+            parser.error('--' + name + ' must be finite and positive')
+    for name in ('iqr_multiplier', 'weight_decay'):
+        value = getattr(args, name)
+        if not np.isfinite(value) or value < 0:
+            parser.error('--' + name + ' must be finite and nonnegative')
 
     return args
 
@@ -379,7 +416,8 @@ def build_graph_nx(adata, gene_cell, cell_cluster_arr, sen_gene_ls,
 
     if args.ccc == 'type1':
         print('Adding cell-cell edges with binary weights ...')
-        adj_matrix, _ = build_ccc_graph(gene_cell, gene_names, lr_panel_path)
+        adj_matrix, _ = build_ccc_graph(
+            gene_cell, gene_names, lr_panel_path, args.ccc_threshold)
         i1, i2 = np.nonzero(adj_matrix)
         print('CCC graph, the number of edges:', len(i1))
         i1, i2 = i1 + gene_num, i2 + gene_num
@@ -480,11 +518,11 @@ def build_ccc_matrix(expression_matrix, gene_names, lr_panel_path=None):
     return ccc_matrix
 
 
-def convert_to_adj(ccc_matrix):
+def convert_to_adj(ccc_matrix, threshold=0.8):
     masked_result = ma.masked_where(ccc_matrix == 0, ccc_matrix)
     transformed = np.exp(-1 / masked_result).filled(0)
     symmetric = 0.5 * (transformed + transformed.T)
-    mask = symmetric >= 0.8
+    mask = symmetric >= threshold
     return np.where(mask, symmetric, 0)
 
 
@@ -504,14 +542,14 @@ def convert_to_adj_v2(ccc_matrix, t=0.8):
     return np.where(adj_matrix >= t, adj_matrix, 0)
 
 
-def build_ccc_graph(gene_cell, gene_names, lr_panel_path=None):
+def build_ccc_graph(gene_cell, gene_names, lr_panel_path=None, threshold=0.8):
     """gene_cell is (gene x cell). Internally transposed to (cell x gene)."""
     ccc_matrix = build_ccc_matrix(gene_cell.T, gene_names, lr_panel_path)
     if ccc_matrix is None:
         # Edge case: none of the L-R genes found in the dataset
         n = gene_cell.shape[1]
         return np.zeros((n, n)), np.zeros((n, n))
-    adj_matrix = convert_to_adj(ccc_matrix)
+    adj_matrix = convert_to_adj(ccc_matrix, threshold)
     ccc_matrix = ccc_matrix * adj_matrix
     return adj_matrix, ccc_matrix
 

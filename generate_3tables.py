@@ -1,339 +1,233 @@
-import os
+import json
 import logging
-import random
+import os
 
 import numpy as np
 import pandas as pd
+import scanpy as sp
 import torch
 import torch_scatter
 
-import scanpy as sp
 import utils
 
 
-args = utils.parse_args()
-print(vars(args))
-
-args.output_dir=f"./outputs/{args.exp_name}"
-print("Outputs dir:",args.output_dir)
-
-os.makedirs(args.output_dir, exist_ok=True)
-
-# set random seed
-seed=args.seed
-torch.manual_seed(seed)
-torch.cuda.manual_seed(seed)
-torch.cuda.manual_seed_all(seed)
-np.random.seed(seed)
-random.seed(seed)
-os.environ['PYTHONHASHSEED'] = str(seed)
-torch.backends.cudnn.deterministic = True
-torch.backends.cudnn.benchmark = False
+logger = logging.getLogger(__name__)
+DEG_COLUMNS = ['gene', 'p_val', 'logFC', 'p_val_adj']
+GENE_TABLE_COLUMNS = DEG_COLUMNS + ['cell_type', 'SnG_score']
 
 
-logging.basicConfig(format='%(asctime)s.%(msecs)03d [%(levelname)s] [%(filename)s:%(lineno)d] %(message)s',
-                    datefmt='# %Y-%m-%d %H:%M:%S')
+def load_results(args):
+    """Load one training result and the exact cell/gene ordering it used."""
+    run_dir = os.path.join(args.output_dir, args.exp_name)
+    epoch = getattr(args, 'epoch', None)
+    suffix = 'final' if epoch is None else f'epoch{epoch}'
+    file_path = os.path.join(run_dir, f'{args.exp_name}_sencellgene-{suffix}.data')
+    data_path = os.path.join(run_dir, f'{args.exp_name}_new_data.h5ad')
+    for path in (file_path, data_path):
+        if not os.path.isfile(path):
+            raise FileNotFoundError(
+                f'Training output not found: {path}. Run deepsas_v1.py first; '
+                'use --epoch N only when selecting an existing iteration output.')
 
-logging.getLogger().setLevel(logging.INFO)
-logger = logging.getLogger()
+    summary_path = os.path.join(run_dir, f'{args.exp_name}_run_summary.json')
+    summary = {}
+    if os.path.isfile(summary_path):
+        with open(summary_path) as handle:
+            summary = json.load(handle)
+    if epoch is None and summary.get('status') not in {'converged', 'max_iter', 'empty_candidates'}:
+        raise ValueError(
+            'Final training output is incomplete or has no valid run summary. '
+            'Finish the current training run before generating final tables; '
+            'use --epoch N to inspect an existing iteration explicitly.')
 
-# Part 1: load and process data
-# cell_cluster_arr used in umap ploting
-logger.info("====== Part 1: load and process data ======")
-if 'data1' in args.exp_name:
-    adata, cluster_cell_ls, cell_cluster_arr, celltype_names = utils.load_data1()
-elif 'rep' in args.exp_name:
-    adata, cluster_cell_ls, cell_cluster_arr, celltype_names = utils.load_data_rep(args.exp_name)
-elif 'example' in args.exp_name:
-    adata, cluster_cell_ls, cell_cluster_arr, celltype_names = utils.load_example_data() 
-else:
-    adata, cluster_cell_ls, cell_cluster_arr, celltype_names = utils.load_data1(args.input_data_count)
+    new_data = sp.read_h5ad(data_path)
+    if args.cell_type_col not in new_data.obs.columns:
+        raise KeyError(f"Cell-type column '{args.cell_type_col}' not found in saved data.")
+    # These local training artifacts contain tensors and Python containers.
+    loaded_data = torch.load(file_path, map_location='cpu', weights_only=False)
+    sencell_dict, sen_gene_ls, attention_scores, edge_index_selfloop = loaded_data
+    sen_gene_ls = list(dict.fromkeys(int(i) for i in sen_gene_ls))
+    n_cells, n_genes = new_data.shape
+    if any(i < 0 or i >= n_genes for i in sen_gene_ls):
+        raise ValueError('Saved SnG indices do not match the processed data.')
+    if any(int(i) < n_genes or int(i) >= n_genes + n_cells for i in sencell_dict):
+        raise ValueError('Saved SnC indices do not match the processed data.')
+    edge_index_selfloop = edge_index_selfloop.detach().cpu().long()
+    attention_scores = attention_scores.detach().cpu().reshape(-1)
+    if edge_index_selfloop.ndim != 2 or edge_index_selfloop.shape[0] != 2:
+        raise ValueError('Saved edge indices must have shape (2, number_of_edges).')
+    if attention_scores.numel() != edge_index_selfloop.shape[1]:
+        raise ValueError('Expected one attention score per edge (single-head GAT).')
+    if edge_index_selfloop.numel() and (
+            edge_index_selfloop.min() < 0 or
+            edge_index_selfloop.max() >= n_genes + n_cells):
+        raise ValueError('Saved graph node indices do not match the processed data.')
 
-new_data, markers_index,\
-    raw_sen_gene_ls, nonsen_gene_ls, gene_names = utils.process_data(
-        adata, cluster_cell_ls, cell_cluster_arr,args)
-    
-# raw sene gene idx: gene name
-initial_marker = pd.DataFrame({'gene_idx': raw_sen_gene_ls, 'gene_name': list(new_data.var_names[raw_sen_gene_ls])})
-
-
-file_path=os.path.join(args.output_dir, f'{args.exp_name}_sencellgene-epoch4.data')
-output_path=os.path.join(args.output_dir, 'Senescent_Tables')
-
-os.makedirs(output_path, exist_ok=True)
-
-# Load the saved object
-loaded_data = torch.load(file_path)
-
-# Unpack the loaded data, sen_gene_ls is new sene gene list from DeepSAS
-sencell_dict, sen_gene_ls, attention_scores, edge_index_selfloop = loaded_data
-
-print(f"Number of SnCs: {len(sencell_dict.keys())}")
-print(f"Number of SnGs: {len(sen_gene_ls)}")
-
-
-
-base_filtered_gene_names = []
-for gene_idx in sen_gene_ls:
-    gene_idx = gene_idx
-    print(int(gene_idx))
-    base_filtered_gene_names.append(new_data.var.index[int(gene_idx)])
-base_gene_idx2names = {'gene_idx': sen_gene_ls, 'gene_name': base_filtered_gene_names}
-base_gene_idx2names_df = pd.DataFrame(base_gene_idx2names)
-base_predict_sens_list = list(set(base_gene_idx2names_df['gene_name']).difference(set(initial_marker['gene_name'])))
-print(base_predict_sens_list)
-print(len(base_predict_sens_list))
-
-
-sencell_indexs=list(sencell_dict.keys())
-sencell_cluster = []
-for i in sencell_indexs:
-    ct=new_data.obs.iloc[i-new_data.shape[1]].clusters
-    sencell_cluster.append(ct)
-sencell_df = pd.DataFrame({'sencell_index': sencell_indexs, 'sencell_cluster': sencell_cluster})
-
-gene_cell=new_data.X.T
-
-def AttentionEachCell(gene_cell, sen_gene_ls, edge_index_selfloop):
-    """
-    Calculate SnCs score based on senescent gene list
-    Same as in the main4.py
-    """
-    # Convert the list of senescent genes to a tensor index
-    # gene_index = torch.tensor(sen_gene_ls, dtype=torch.long)
-    gene_index = sen_gene_ls
-    
-    # Create a boolean mask for senescent genes
-    total_nodes = gene_cell.shape[0] + gene_cell.shape[1]
-    gene_mask = torch.zeros(total_nodes, dtype=torch.bool)
-    gene_mask[gene_index] = True
-
-    # Identify edges where the target is a cell node
-    cell_offset = gene_cell.shape[0]
-    edge_mask_cell = edge_index_selfloop[1] >= cell_offset
-    
-    # Identify edges where the source is a senescent gene
-    edge_mask_gene = gene_mask[edge_index_selfloop[0]]
-    
-    # Combined mask for edges from senescent genes to cells
-    edge_mask_selected = edge_mask_cell & edge_mask_gene
-    
-    # Indices of selected edges
-    edges_selected_indices = edge_mask_selected.nonzero().squeeze()
-
-    # Target cell indices and attention scores for selected edges
-    selected_edges_targets = edge_index_selfloop[1][edges_selected_indices]
-    selected_attention_scores = attention_scores[edges_selected_indices].squeeze()
-    
-    # Adjust cell indices to start from 0
-    cell_indices_in_range = selected_edges_targets - cell_offset
-    
-    # Number of cells
-    num_cells = gene_cell.shape[1]
-    
-    # Sum and count attention scores per cell
-    attention_sums = torch_scatter.scatter(selected_attention_scores, cell_indices_in_range,
-                                           dim_size=num_cells, reduce='sum')
-    attention_counts = torch_scatter.scatter(torch.ones_like(selected_attention_scores),
-                                             cell_indices_in_range, dim_size=num_cells, reduce='sum')
-    
-    # Compute mean attention score per cell, handle division by zero
-    attention_s_per_cell = torch.zeros(num_cells)
-    valid_cells = attention_counts > 0
-    # NOTE: Mean operation for each attention edge
-    attention_s_per_cell[valid_cells] = attention_sums[valid_cells] / attention_counts[valid_cells]
-
-    return attention_s_per_cell.detach().tolist()
-
-attention_s_per_cell = AttentionEachCell(gene_cell, sen_gene_ls, edge_index_selfloop)
-
-if_senCs = np.zeros(new_data.shape[0],dtype=np.int64)
-if_senCs[[i - new_data.shape[1] for i in sencell_indexs]] = 1
-
-SnC_scores = pd.DataFrame({'cell_id':list(range(new_data.shape[0])), 'cell_name': new_data.obs_names, 'cell_type':new_data.obs['clusters'], 'ifSnCs': list(if_senCs), 'SnC scores': attention_s_per_cell})
+    if 'initial_sng_indices' in summary:
+        initial_indices = summary['initial_sng_indices']
+    else:
+        # Compatibility with older iteration outputs; do not preprocess again.
+        markers = {g for group in utils.load_markers(args) for g in group}
+        initial_indices = [i for i, name in enumerate(new_data.var_names) if name in markers]
+    initial_marker = pd.DataFrame({
+        'gene_idx': initial_indices,
+        'gene_name': list(new_data.var_names[initial_indices]),
+    })
+    logger.info('Loaded %s: %d SnCs, %d SnGs', file_path, len(sencell_dict), len(sen_gene_ls))
+    if summary and epoch is None:
+        logger.info('Training stop status: %s; final iteration: %s',
+                    summary.get('status'), summary.get('final_epoch'))
+    return (new_data, initial_marker, sencell_dict, sen_gene_ls,
+            attention_scores, edge_index_selfloop, os.path.join(run_dir, 'Senescent_Tables'))
 
 
-SnC_scores.to_csv(f"{output_path}/Cell_Table1_SnC_scores.csv", index=False)
-new_data.obs = pd.merge(new_data.obs, SnC_scores, left_index=True, right_index=True)
-new_data.obs['ifSnCs'] = new_data.obs['ifSnCs'].astype(str)
+def AttentionEachCell(gene_cell, sen_gene_ls, edge_index_selfloop, attention_scores):
+    """Mean attention on SnG-to-cell edges for every cell."""
+    n_genes, n_cells = gene_cell.shape
+    gene_mask = torch.zeros(n_genes + n_cells, dtype=torch.bool)
+    gene_mask[sen_gene_ls] = True
+    selected = ((edge_index_selfloop[1] >= n_genes) &
+                gene_mask[edge_index_selfloop[0]])
+    targets = edge_index_selfloop[1, selected] - n_genes
+    scores = attention_scores.reshape(-1)[selected]
+    sums = torch_scatter.scatter(scores, targets, dim=0, dim_size=n_cells, reduce='sum')
+    counts = torch_scatter.scatter(torch.ones_like(scores), targets,
+                                   dim=0, dim_size=n_cells, reduce='sum')
+    return (sums / counts.clamp_min(1)).tolist()
 
-def DEGTable(new_data):
-    # prepare adata for deg
-    adata_deg=new_data.copy()
+
+def AttentionEachGene(gene_cell, cell_indices, edge_index_selfloop, attention_scores):
+    """Mean attention on selected SnC-to-gene edges for every gene."""
+    n_genes, n_cells = gene_cell.shape
+    cell_mask = torch.zeros(n_genes + n_cells, dtype=torch.bool)
+    cell_mask[cell_indices] = True
+    selected = ((edge_index_selfloop[1] < n_genes) &
+                cell_mask[edge_index_selfloop[0]])
+    targets = edge_index_selfloop[1, selected]
+    scores = attention_scores.reshape(-1)[selected]
+    sums = torch_scatter.scatter(scores, targets, dim=0, dim_size=n_genes, reduce='sum')
+    counts = torch_scatter.scatter(torch.ones_like(scores), targets,
+                                   dim=0, dim_size=n_genes, reduce='sum')
+    return sums / counts.clamp_min(1)
+
+
+def DEGTable(new_data, output_path, cell_type_col):
+    """Run the existing Wilcoxon comparison only when both groups are usable."""
+    adata_deg = new_data.copy()
     sp.pp.normalize_total(adata_deg, target_sum=1e4)
     sp.pp.log1p(adata_deg)
-    # sp.pp.scale(adata_deg)
+    results = {}
+    for cell_type in adata_deg.obs[cell_type_col].unique():
+        adata_sub = adata_deg[adata_deg.obs[cell_type_col] == cell_type].copy()
+        n_snc = int((adata_sub.obs['ifSnCs'] == '1').sum())
+        n_control = int((adata_sub.obs['ifSnCs'] == '0').sum())
+        degs = pd.DataFrame(columns=DEG_COLUMNS)
+        # Preserve the original >5 SnC rule; Scanpy also needs >=2 controls.
+        if n_snc <= 5 or n_control < 2:
+            logger.info('Skipping DEG for %s: %d SnCs, %d controls '
+                        '(requires >5 SnCs and >=2 controls).', cell_type, n_snc, n_control)
+        else:
+            sp.tl.rank_genes_groups(adata_sub, groupby='ifSnCs', groups=['1'],
+                                    reference='0', method='wilcoxon')
+            ranked = adata_sub.uns['rank_genes_groups']
+            degs = pd.DataFrame({
+                'gene': ranked['names']['1'],
+                'p_val': ranked['pvals']['1'],
+                'logFC': ranked['logfoldchanges']['1'],
+                'p_val_adj': ranked['pvals_adj']['1'],
+            }).sort_values(by='logFC')
+        results[cell_type] = degs
+        save_ct_name = str(cell_type).replace(' ', '_').replace('/', '_')
+        # Write an empty table too, so a previous run's results are not reused.
+        degs.to_csv(os.path.join(output_path, f'{save_ct_name}_DEG_results.csv'), index=False)
+    return results
 
-    cell_types = adata_deg.obs['clusters'].unique()
-    for cell_type in cell_types:
-        adata_deg_sub=adata_deg[adata_deg.obs['clusters']==cell_type].copy()
-        value_counts = (adata_deg_sub.obs['ifSnCs'] == '1').sum()
-        if value_counts <= 5:
+
+def GeneTable2(ct2gene_score_df, deg_results):
+    frames = []
+    for cell_type, degs in deg_results.items():
+        if degs.empty or cell_type not in ct2gene_score_df.columns:
             continue
-
-        print(f"{cell_type}, Number of SnCs: {value_counts}")    
-        sp.tl.rank_genes_groups(adata_deg_sub, groupby='ifSnCs', groups=["1"], 
-                                reference="0", method='wilcoxon')
-        # Extract the results into a DataFrame
-        degs = pd.DataFrame({
-            'gene': adata_deg_sub.uns['rank_genes_groups']['names']['1'],
-            'p_val': adata_deg_sub.uns['rank_genes_groups']['pvals']['1'],
-            'logFC': adata_deg_sub.uns['rank_genes_groups']['logfoldchanges']['1'],
-            'p_val_adj': adata_deg_sub.uns['rank_genes_groups']['pvals_adj']['1']
-        })
-        
-        degs=degs.sort_values(by='logFC')
-
-        save_ct_name = cell_type.replace(' ', '_')
-        save_ct_name = cell_type.replace('/', '_')
-        print(save_ct_name)
-        degs.to_csv(f"{output_path}/{save_ct_name}_DEG_results.csv", index=False)
-
-DEGTable(new_data)
-
-cluster_count = pd.DataFrame(new_data.obs['clusters'].value_counts())
-sencell_cluster_count = pd.DataFrame(sencell_df['sencell_cluster'].value_counts())
-sencell_cluster_count=sencell_cluster_count.reset_index()
-sencell_cluster_count = sencell_cluster_count['sencell_cluster']
-merged_df = cluster_count.join(sencell_cluster_count).fillna(0)
-merged_df = merged_df.rename(columns={'clusters': 'number_of_cells', 'sencell_cluster': "number_of_SnCs"})
-merged_df = merged_df.astype(int)
-merged_df.index.name = "cell_type"
-
-merged_df.to_csv(f"{output_path}/Cell_Table2_SnCs_per_ct.csv")
-
-ct_sencell_indexs={}
-row_numbers=np.array(sencell_indexs)-new_data.shape[1]
-
-# Dict {ct: cell_index}
-for i in row_numbers:
-    ct_=new_data.obs.iloc[i]['clusters']
-    if ct_ in ct_sencell_indexs:
-        ct_sencell_indexs[ct_].append(i+new_data.shape[1])
-    else:
-        ct_sencell_indexs[ct_]=[i+new_data.shape[1]]
-        
-
-def AttentionEachGene(gene_cell, cell_indices, edge_index_selfloop):
-    """
-    gene attention score from edges connected with cell_indices,
-    the same as main4.py, but separate for each cell type.
-    """
-    num_genes = gene_cell.shape[0]
-    num_cells = gene_cell.shape[1]
-    total_nodes = num_genes + num_cells
-
-    # Create a mask for the selected cells
-    cell_mask = torch.zeros(total_nodes, dtype=torch.bool)
-    cell_mask[cell_indices] = True
-
-    # Create a mask for edges where the target node is a gene
-    edge_mask_gene = edge_index_selfloop[1] < num_genes
-    
-    edge_mask_cell = cell_mask[edge_index_selfloop[0]]
-
-    edge_mask_selected = edge_mask_gene & edge_mask_cell
-
-    edges_selected_indices = edge_mask_selected.nonzero().squeeze()
-
-    # Target cell indices and attention scores for selected edges
-    selected_edges_targets = edge_index_selfloop[1][edges_selected_indices]
-    selected_attention_scores = attention_scores[edges_selected_indices].squeeze()
-
-    # Compute per-gene sums and counts using torch_scatter
-    # Counts: Number of times each gene appears in masked_genes
-    counts = torch_scatter.scatter(torch.ones_like(selected_attention_scores), selected_edges_targets,
-                     dim=0, dim_size=num_genes, reduce='sum')
-    # Sums: Sum of attention scores per gene
-    sums = torch_scatter.scatter(selected_attention_scores, selected_edges_targets,
-                   dim=0, dim_size=num_genes, reduce='sum')
-      
-    # Avoid division by zero
-    res = torch.zeros(num_genes, dtype=torch.float32)
-    nonzero_mask = counts > 0
-    res[nonzero_mask] = sums[nonzero_mask] / counts[nonzero_mask] # Mean
-
-    return res.detach()
-
-ct2gene_score = {}
-# SnGs for each cell type
-for ct, cell_indices in ct_sencell_indexs.items():
-    score_per_gene = AttentionEachGene(gene_cell, cell_indices, edge_index_selfloop)
-    sene_gene_score = score_per_gene[sen_gene_ls].tolist()
-    ct2gene_score[ct] = sene_gene_score
-    
-    
-ct2gene_score_df = pd.DataFrame(ct2gene_score)
-
-# align gene index with gene names
-var_df = new_data.var.reset_index()
-
-sene_gene_names = []
-
-for gene_idx in sen_gene_ls:
-    gene_idx = gene_idx
-    gene_name = var_df.iloc[int(gene_idx)]['index']
-    sene_gene_names.append(gene_name)
-ct2gene_score_df.index = sene_gene_names
+        selected = degs[
+            degs['gene'].isin(ct2gene_score_df.index) & (degs['logFC'] >= 0.25)
+        ].copy()
+        selected['cell_type'] = cell_type
+        selected['SnG_score'] = selected['gene'].map(ct2gene_score_df[cell_type])
+        frames.append(selected)
+    if not frames:
+        return pd.DataFrame(columns=GENE_TABLE_COLUMNS)
+    all_df = pd.concat(frames, ignore_index=True)
+    return all_df[all_df['SnG_score'] != 0.]
 
 
-ct2gene_score_df.to_csv(f"{output_path}/Gene_Table1_SnG_scores_per_ct.csv")
+def generate_tables(new_data, initial_marker, sencell_dict, sen_gene_ls,
+                    attention_scores, edge_index_selfloop, output_path, cell_type_col):
+    os.makedirs(output_path, exist_ok=True)
+    sencell_indices = [int(i) for i in sencell_dict]
+    rows = np.asarray(sencell_indices, dtype=np.int64) - new_data.n_vars
+    gene_cell = new_data.X.T
+    cell_types = new_data.obs[cell_type_col]
+    if_snc = np.zeros(new_data.n_obs, dtype=np.int64)
+    if_snc[rows] = 1
+    cell_scores = pd.DataFrame({
+        'cell_id': np.arange(new_data.n_obs),
+        'cell_name': new_data.obs_names,
+        'cell_type': cell_types.to_numpy(),
+        'ifSnCs': if_snc,
+        'SnC scores': AttentionEachCell(gene_cell, sen_gene_ls, edge_index_selfloop, attention_scores),
+    })
+    cell_scores.to_csv(os.path.join(output_path, 'Cell_Table1_SnC_scores.csv'), index=False)
+    # Assign by position without merging on possibly unrelated DataFrame indices.
+    new_data.obs['ifSnCs'] = if_snc.astype(str)
 
-def GeneTable2(new_data, ct2gene_score_df):
-    cell_types = new_data.obs['clusters'].unique()
+    counts = pd.concat([
+        cell_types.value_counts().rename('number_of_cells'),
+        cell_types.iloc[rows].value_counts().rename('number_of_SnCs'),
+    ], axis=1).fillna(0).astype(int)
+    counts.index.name = 'cell_type'
+    counts.to_csv(os.path.join(output_path, 'Cell_Table2_SnCs_per_ct.csv'))
 
-    df_list = []
-    for ct in cell_types:
-        save_ct_name = ct.replace(' ', '_')
-        save_ct_name = ct.replace('/', '_')
-        degs_ct_path = f"{output_path}/{save_ct_name}_DEG_results.csv"
-        if os.path.exists(degs_ct_path):
-            degs_ct_df = pd.read_csv(degs_ct_path)
-            sub_degs_ct_df = degs_ct_df[degs_ct_df['gene'].isin(ct2gene_score_df.index)]
-            sub_degs_ct_df = sub_degs_ct_df[sub_degs_ct_df['logFC'] >= 0.25] # fliter DEG genes based on logFC
-            sub_degs_ct_df['cell_type'] = ct
-            sub_degs_ct_df[f'SnG_score'] = sub_degs_ct_df['gene'].map(ct2gene_score_df[ct].to_dict()) # SnG scores fo this cell_type
-            df_list.append(sub_degs_ct_df)
+    ct_sencell_indices = {}
+    for row in rows:
+        cell_type = cell_types.iloc[row]
+        ct_sencell_indices.setdefault(cell_type, []).append(int(row + new_data.n_vars))
+    ct2gene_score = {}
+    for cell_type, indices in ct_sencell_indices.items():
+        scores = AttentionEachGene(gene_cell, indices, edge_index_selfloop, attention_scores)
+        ct2gene_score[cell_type] = scores[sen_gene_ls].tolist()
+    ct2gene_score_df = pd.DataFrame(ct2gene_score, index=list(new_data.var_names[sen_gene_ls]))
+    ct2gene_score_df.to_csv(os.path.join(output_path, 'Gene_Table1_SnG_scores_per_ct.csv'))
 
-    all_df = pd.concat(df_list)
-    all_df = all_df[all_df["SnG_score"] != 0.]
-    return all_df
-total_df = GeneTable2(new_data, ct2gene_score_df)
-total_df
-
-total_df.to_csv(f"{output_path}/Gene_Table2_DEG_ct_SnG_score.csv", index=False)
-
-# Group by 'gene' and aggregate cell_type into a list or join them
-grouped_df = total_df.groupby('gene').agg({
-    'cell_type': lambda x: ', '.join(x.unique()),  # Combine unique cell_types
-    'p_val': 'mean',   # Example of how you can aggregate other columns
-    'logFC': 'mean',
-    'p_val_adj': 'mean',
-    'SnG_score': 'mean'
-}).reset_index()
-
-grouped_df['hallmarker'] = grouped_df['gene'].isin(initial_marker['gene_name'])
-
-grouped_df.to_csv(f"{output_path}/Gene_Table3_gene_ct_count.csv", index=False)
-
-# Filter rows where "cell_type" column contains only one cell type
-df_filtered = grouped_df[grouped_df["cell_type"].apply(lambda x: len(x.split(",")) == 1)]
-
-df_filtered.to_csv(f"{output_path}/Gene_newTable3_gene_ct_count.csv", index=False)
+    deg_results = DEGTable(new_data, output_path, cell_type_col)
+    total_df = GeneTable2(ct2gene_score_df, deg_results)
+    total_df.to_csv(os.path.join(output_path, 'Gene_Table2_DEG_ct_SnG_score.csv'), index=False)
+    grouped_df = total_df.groupby('gene').agg({
+        'cell_type': lambda x: ', '.join(str(value) for value in x.unique()),
+        'p_val': 'mean',
+        'logFC': 'mean',
+        'p_val_adj': 'mean',
+        'SnG_score': 'mean',
+    }).reset_index()
+    grouped_df['hallmarker'] = grouped_df['gene'].isin(initial_marker['gene_name'])
+    grouped_df.to_csv(os.path.join(output_path, 'Gene_Table3_gene_ct_count.csv'), index=False)
+    single_type = grouped_df['cell_type'].map(lambda x: len(x.split(',')) == 1).astype(bool)
+    grouped_df.loc[single_type].to_csv(
+        os.path.join(output_path, 'Gene_newTable3_gene_ct_count.csv'), index=False)
+    by_celltype = total_df.groupby('cell_type')['gene'].agg(
+        gene_count='count', gene_list=lambda x: list(x)).reset_index()
+    by_celltype.to_csv(os.path.join(output_path, 'table2ByCelltype.csv'), index=False)
+    by_gene = total_df.groupby('gene').agg(
+        cell_type_count=('cell_type', 'nunique'),
+        cell_types=('cell_type', lambda x: list(x.unique()))).reset_index()
+    by_gene.to_csv(os.path.join(output_path, 'table2ByGene.csv'), index=False)
+    logger.info('Saved tables to %s', output_path)
 
 
+def main():
+    logging.basicConfig(format='%(asctime)s [%(levelname)s] %(message)s', level=logging.INFO)
+    args = utils.parse_args()
+    generate_tables(*load_results(args), cell_type_col=args.cell_type_col)
 
-# generate two tables by cell type and by gene from table 2 
-df_table2=pd.read_csv(f"{output_path}/Gene_Table2_DEG_ct_SnG_score.csv")
 
-result_df = df_table2.groupby('cell_type')['gene'].agg(
-    gene_count='count',                      # Count the number of genes per cell type
-    gene_list=lambda x: list(x)              # Aggregate the genes into a list
-).reset_index()
-result_df.to_csv(f"{output_path}/table2ByCelltype.csv",index=False)
-
-result_df = df_table2.groupby('gene').agg(
-    cell_type_count=('cell_type', 'nunique'),
-    cell_types=('cell_type', lambda x: list(x.unique()))
-).reset_index()
-result_df.to_csv(f"{output_path}/table2ByGene.csv",index=False)
+if __name__ == '__main__':
+    main()
