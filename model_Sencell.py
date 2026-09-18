@@ -40,6 +40,13 @@ def getPrototypeEmb(sencell_dict, cluster_sencell):
 
 
 class Sencell(torch.nn.Module):
+    """Fixed residual MLP used to refine cell embeddings.
+
+    The reported architecture uses six linear transformations, CELU
+    activations, two residual additions, and shared LayerNorm. ``hidden_size``
+    and the three initial distance targets remain the tunable dimensions.
+    """
+
     def __init__(self, dim, hidden_size, distance_levels):
         super().__init__()
         if dim < 1 or hidden_size < 1:

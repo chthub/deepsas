@@ -1,4 +1,5 @@
 import inspect
+import io
 import unittest
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -25,6 +26,11 @@ class ModelInterfaceTests(unittest.TestCase):
         self.assertIn('encoder.gene_projection.weight', model.state_dict())
         self.assertIn('encoder.cell_projection.weight', model.state_dict())
         self.assertEqual(model.architecture_version, 'type-specific-projections-v1')
+        for layer in (model.encoder.conv1, model.encoder.conv2):
+            self.assertEqual(layer.heads, 1)
+            self.assertTrue(layer.concat)
+            self.assertTrue(layer.add_self_loops)
+            self.assertEqual(layer.negative_slope, .2)
 
     def test_gene_and_cell_projections_are_distinct(self):
         model = GAEModel(2, 2, hidden_size=4, dropout=0.)
@@ -86,11 +92,68 @@ class ModelInterfaceTests(unittest.TestCase):
         self.assertFalse(hasattr(args, 'ccc_aggregation'))
         self.assertEqual(args.sng_update_mode, 'iqr')
         self.assertEqual(args.min_snc_per_type, 1)
+        self.assertEqual(args.min_genes_per_cell, 200)
+        self.assertEqual(args.min_cells_per_gene, 10)
+        self.assertEqual(args.normalization_target_sum, 1e4)
+        self.assertEqual(args.scale_max_value, 10.)
+        self.assertEqual(args.umap_n_neighbors, 10)
+        self.assertEqual(args.umap_n_pcs, 40)
+        self.assertEqual(args.deg_min_snc, 6)
+        self.assertEqual(args.deg_min_control, 2)
+        self.assertEqual(args.deg_min_logfc, .25)
         with patch('sys.argv', [
                 'deepsas_v1.py', '--exp_name', 'test',
                 '--no_type_specific_projections']):
             shared_args = utils.parse_args()
         self.assertFalse(shared_args.type_specific_projections)
+
+    def test_preprocessing_and_reporting_defaults_can_be_passed_explicitly(self):
+        argv = [
+            'deepsas_v1.py', '--exp_name', 'test',
+            '--min_genes_per_cell', '200',
+            '--min_cells_per_gene', '10',
+            '--normalization_target_sum', '10000',
+            '--scale_max_value', '10',
+            '--umap_n_neighbors', '10',
+            '--umap_n_pcs', '40',
+            '--deg_min_snc', '6',
+            '--deg_min_control', '2',
+            '--deg_min_logfc', '0.25',
+        ]
+        with patch('sys.argv', argv):
+            explicit = utils.parse_args()
+        with patch('sys.argv', ['deepsas_v1.py', '--exp_name', 'test']):
+            defaults = utils.parse_args()
+        names = (
+            'min_genes_per_cell', 'min_cells_per_gene',
+            'normalization_target_sum', 'scale_max_value',
+            'umap_n_neighbors', 'umap_n_pcs', 'deg_min_snc',
+            'deg_min_control', 'deg_min_logfc')
+        self.assertEqual(
+            {name: getattr(explicit, name) for name in names},
+            {name: getattr(defaults, name) for name in names})
+
+    def test_new_numeric_parameters_reject_invalid_values(self):
+        invalid_options = (
+            ('--min_genes_per_cell', '0'),
+            ('--min_cells_per_gene', '0'),
+            ('--normalization_target_sum', '0'),
+            ('--scale_max_value', '0'),
+            ('--umap_n_neighbors', '0'),
+            ('--umap_n_pcs', '0'),
+            ('--phenotype_hvg_count', '0'),
+            ('--min_snc_per_phenotype', '0'),
+            ('--phenotype_zscore_threshold', 'nan'),
+            ('--deg_min_snc', '0'),
+            ('--deg_min_control', '0'),
+            ('--deg_min_logfc', 'nan'),
+        )
+        for option, value in invalid_options:
+            with self.subTest(option=option), patch(
+                    'sys.argv', ['deepsas_v1.py', '--exp_name', 'test',
+                                 option, value]), patch('sys.stderr', new=io.StringIO()):
+                with self.assertRaises(SystemExit):
+                    utils.parse_args()
 
     def test_checkpoint_projection_mode_must_match(self):
         shared_model = SimpleNamespace(encoder=SimpleNamespace())

@@ -134,7 +134,9 @@ For datasets with many cells (>50,000), use the sampling approach detailed in [S
 
 ### Phenotype related Analysis
 
-To incorporate the phenotype information into the analysis, please following the tutorial in [`phenotype_analysis`](./phenotype_analysis/README.md).
+The supported [`phenotype_analysis`](./phenotype_analysis/README.md) entry point
+uses the current DeepSAS pipeline and additionally selects SnCs within a
+configurable phenotype column such as treatment or disease state.
 
 ## Input Data Format
 
@@ -162,20 +164,39 @@ Run `uv run python deepsas_v1.py --help` for the full command-line interface. Th
 - `--batch_remove`: Enable ComBat before the cell UMAP embedding; default **off**.
 - `--epoch`: Table generation only; default is the final result, or select an existing zero-based iteration number.
 
+### Preprocessing
+
+| Parameter | Default | Role and valid range |
+| --- | ---: | --- |
+| `--min_genes_per_cell` | `200` | Minimum detected genes per retained cell; positive integer |
+| `--min_cells_per_gene` | `10` | Minimum cells expressing a retained gene; positive integer |
+| `--normalization_target_sum` | `10000` | Target total count used before `log1p`; positive number |
+| `--scale_max_value` | `10` | Upper clipping value applied after scaling; positive number |
+| `--umap_n_neighbors` | `10` | Neighbor count used to construct the UMAP graph; positive integer |
+| `--umap_n_pcs` | `40` | Principal components supplied to the neighbor graph; positive integer |
+
+These defaults are the values used before they were exposed as options. Omitting
+the new options therefore preserves the previous computation.
+
 ### Model Configuration
 
 | Parameter                                                            | Default           | Role                                                                                                         |
 | -------------------------------------------------------------------- | ----------------- | ------------------------------------------------------------------------------------------------------------ |
 | `--seed`                                                           | `40`            | Random seed, including PCA and UMAP                                                                          |
 | `--n_genes`                                                        | `full`          | All retained genes, or a requested number of highly variable genes plus available marker genes               |
-| `--gene_set`                                                       | `full`          | Initial senescence marker lists; alternatives include`senmayo`, `fridman`, and `cellage`               |
+| `--gene_set`                                                       | `full`          | Initial senescence marker lists; alternatives include `senmayo`, `fridman`, and `cellage`               |
 | `--emb_size`                                                       | `12`            | Cell and gene embedding dimension                                                                            |
 | `--type_specific_projections` / `--no_type_specific_projections` | enabled           | Use separate gene/cell input projections by default, or explicitly select a shared GAT projection            |
-| `--ccc`                                                            | `type1`         | Binary CCC edges;`type3` omits CCC edges                                                                   |
+| `--ccc`                                                            | `type1`         | Binary CCC edges; `type3` omits CCC edges                                                                   |
 | `--ccc_threshold`                                                  | `0.8`           | Signaling-score threshold φ for retaining CCC edges                                                         |
-| `--lr_panel`                                                       | Built-in panel    | Optional ligand–receptor CSV with`ligand` and `receptor` columns                                        |
+| `--lr_panel`                                                       | Built-in panel    | Optional ligand–receptor CSV with `ligand` and `receptor` columns                                        |
 
-The graph uses binary connectivity: cell–gene expression presence and thresholded CCC connections are represented by graph topology. The GAT therefore accepts node features and edge indices only; the implementation does not expose an edge-feature dimension parameter. CCC probabilities are computed independently for each available ligand–receptor pair and then averaged, matching Methods 1.2.
+The graph uses binary connectivity: cell–gene expression presence and thresholded CCC connections are represented by graph topology. The GAT therefore accepts node features and edge indices only.
+
+`--gene_set full` combines SenMayo, FRIDMAN, CellAge, and the unchanged
+11-gene legacy cell-cycle marker seed from DeepSAS v1. The named alternatives
+select only the marker collections stated in their option value. The built-in
+L–R panel is the eight-ligand SASP panel from Supplementary Table S19.
 
 ### Training and Candidate Selection
 
@@ -187,29 +208,55 @@ The graph uses binary connectivity: cell–gene expression presence and threshol
 | `--gat_dropout`       | `0.6`   | Attention dropout during GAT training; disabled for candidate scoring                      |
 | `--cell_optim_epoch`  | `50`    | Cell embedding optimization epochs per outer iteration                                     |
 | `--cell_hidden_size`  | `128`   | Hidden width of the cell embedding network                                                 |
-| `--distance_levels`   | `0 0 4` | Initial learnable targets for the three active distance-loss terms                         |
+| `--distance_levels`   | `0 0 4` | Initial learnable targets for within-type SnC, between-type SnC, and same-type non-SnC distances |
 | `--learning_rate`     | `0.01`  | Initial Adam learning rate for cell embedding optimization                                 |
 | `--weight_decay`      | `0.001` | Cell optimizer weight decay                                                                |
 | `--lr_decay`          | `0.85`  | Cell learning-rate multiplier after each outer iteration                                   |
-| `--iqr_multiplier`    | `1.5`   | Upper-fence multiplier for SnC scores and for SnG scores in`iqr` mode                    |
-| `--sng_update_mode`   | `iqr`   | SnG update rule: the default threshold-driven IQR policy or the optional`fixed10` policy |
+| `--iqr_multiplier`    | `1.5`   | Upper-fence multiplier for SnC scores and for SnG scores in `iqr` mode                    |
+| `--sng_update_mode`   | `iqr`   | SnG update rule: the default threshold-driven IQR policy or the optional `fixed10` policy |
 | `--min_snc_per_type`  | `1`     | At least this many above-fence SnCs are required to retain a cell type's candidates        |
 | `--max_iter`          | `10`    | Maximum number of completed outer refinement iterations                                    |
 | `--convergence_tol`   | `0.9`   | Required Jaccard overlap for both candidate sets                                           |
 
-These example-dataset defaults are exposed for reproducibility and must be adapted and validated for other datasets. Architecture and preprocessing settings include:
+### Downstream Reporting
+
+| Parameter | Default | Role and valid range |
+| --- | ---: | --- |
+| `--deg_min_snc` | `6` | Minimum SnCs required for a cell-type DEG comparison; positive integer |
+| `--deg_min_control` | `2` | Minimum controls required for a cell-type DEG comparison; positive integer |
+| `--deg_min_logfc` | `0.25` | Minimum log fold change retained in the combined DEG/SnG table; finite number |
+
+These three options affect only downstream tables; they do not change predicted
+SnC or SnG candidates.
+
+### Phenotype-aware Extension
+
+| Parameter | Default | Role and valid range |
+| --- | ---: | --- |
+| `--phenotype_aware` | off | Add phenotype-stratified SnC selection; enabled automatically by the phenotype training entry point |
+| `--phenotype_col` | `Condition` | AnnData `.obs` column containing phenotype labels |
+| `--min_snc_per_phenotype` | `1` | Minimum above-fence SnCs retained for a phenotype; positive integer |
+| `--use_hvg_deg` | off | Retain per-cell-type HVGs plus configured senescence and L–R genes before standard gene selection |
+| `--phenotype_hvg_count` | `1000` | HVGs requested per cell type; positive integer |
+| `--phenotype_zscore_threshold` | `2.0` | Finite reporting cutoff for phenotype-specific SnGs |
+
+These options are inactive in the standard pipeline unless
+`--phenotype_aware` or the phenotype entry point is used. See the extension
+README for its selection rule, commands, and outputs.
+
+These example-dataset defaults are exposed for reproducibility and must be adapted and validated for other datasets. Fixed architecture choices include:
 
 - By default, separate learned projections map gene and cell embeddings into the shared GAT feature space. Pass `--no_type_specific_projections` to use the shared projection path instead; switching modes requires retraining the GAT checkpoint.
-- Cell embedding network: CELU activation and layer normalization. Its hidden width and the initial values of the three learned distance targets are configured by `--cell_hidden_size` and `--distance_levels`.
-- Input filtering: at least `200` detected genes per cell and expression in at least `10` cells per gene.
-- Initial embeddings: normalization to `10,000` counts, log transformation, scaling clipped at `10`, PCA, a neighbor graph with `10` neighbors and `40` PCs, and UMAP.
-- Downstream DEG tables: a comparison requires at least `6` SnCs and `2` controls; the combined DEG/SnG table retains hits with log fold change at least `0.25`. These reporting rules do not alter the predicted SnC or SnG sets.
+- The graph encoder has two GAT layers. Its explicit settings—matching the original PyG defaults—are one attention head, concatenation, self-loops, and a LeakyReLU negative slope of `0.2`. These are fixed architecture choices, not dataset-tuning parameters.
+- GAT training uses Adam. Cell embedding optimization uses Adam followed by an exponential learning-rate scheduler; their numeric settings are exposed above.
+- The cell embedding network uses six linear transformations, CELU activations, two residual additions, and layer normalization. Its hidden width and initial distance targets are configurable through `--cell_hidden_size` and `--distance_levels`.
+- PCA uses the deterministic `arpack` solver, followed by UMAP. Input thresholds and numeric embedding preprocessing settings are exposed in the preprocessing table.
 
 Obsolete options that did not affect the main pipeline have been removed. SnC candidates are determined by their score thresholds; SnG updates follow `--sng_update_mode`; initial embeddings use UMAP.
 
 ### SnG Updates and Stopping
 
-The upper fence `Q3 + iqr_multiplier × IQR` is a score threshold. For SnGs, its quartiles are calculated over the scores of the **current unique candidate genes**, including zeros. The number of current candidates strictly above this threshold defines the requested replacement count `D2*`. Up to this many above-fence genes outside the candidate set may replace lower-scoring current candidates, pairing the highest-scoring entrants with the lowest-scoring current genes. Each replacement must strictly improve the score. The actual count satisfies `0 <= D2 <= D2*` and may be smaller when suitable new genes are unavailable. If no current candidate exceeds the upper fence, no genes are replaced. Candidate gene IDs remain unique. The working SnG candidate set is global; cell-type-specific gene scores and differential-expression tables are computed downstream.
+We have incorporated performance optimizations into the code; although the implementation may differ slightly from the description in the paper, it is logically equivalent.
 
 In `iqr` mode, the convergence log records `D2*` as `sng_outlier_count` and
 the accepted count `D2` as `sng_swaps`. In `fixed10` mode,
@@ -223,11 +270,7 @@ lowest-scoring current candidates (or all available genes when either side has
 fewer than ten). Candidate IDs remain unique. The default `iqr` mode uses the
 threshold-driven rule described above.
 
-The pretrained GAT embeddings are retained as fixed inputs to cell embedding optimization across outer iterations. When recomputing attention, the graph retains its original gene input features, updates only the cell rows with the optimized cell embeddings, and uses attention coefficients from the final GAT layer for candidate scoring.
-
-After updating embeddings, attention, and genes, SnC labels are recalculated to produce a complete iteration state. Outer convergence uses `J(A, B) = |A ∩ B| / |A ∪ B|` between adjacent completed states: both SnC and SnG Jaccard values must reach `--convergence_tol`, and both previous and current sets must be nonempty. The default tolerance is `0.9`; `--convergence_tol 1` requests exact membership equality. Loss is optimized within each iteration; it is not the outer stopping criterion. In `fixed10` mode, compulsory gene turnover can keep the SnG Jaccard below `1` (ten disjoint replacements in 274 candidates give approximately `0.9296`), while `iqr` mode can make zero replacements and attain exact stability. Convergence is not guaranteed within the iteration limit.
-
-Ideally, the model is considered to have converged if the candidate set remains unchanged between consecutive iterations. However, in practice, we have observed fluctuations where individual genes or cells repeatedly enter and exit the set. In such cases, the Jaccard similarity may fail to reach 0.99 even though the model has attained a stable state. 
+After updating embeddings, attention, and genes, SnC labels are recalculated to produce a complete iteration state. Outer convergence uses `J(A, B) = |A ∩ B| / |A ∪ B|` between adjacent completed states: both SnC and SnG Jaccard values must reach `--convergence_tol`, and both previous and current sets must be nonempty. The default tolerance is `0.9`; `--convergence_tol 1` requests exact membership equality. Loss is optimized within each iteration; it is not the outer stopping criterion. In `fixed10` mode, compulsory gene turnover can keep the SnG Jaccard below `1`, while `iqr` mode can make zero replacements and attain exact stability. Convergence is not guaranteed within the iteration limit. Ideally, the model is considered to have converged if the candidate set remains unchanged between consecutive iterations. However, in practice, we have observed fluctuations where individual genes or cells repeatedly enter and exit the set. In such cases, the Jaccard similarity may fail to reach 0.99 even though the model has attained a stable state.
 
 ## Output Files
 

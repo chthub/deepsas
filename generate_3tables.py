@@ -14,11 +14,12 @@ import utils
 logger = logging.getLogger(__name__)
 DEG_COLUMNS = ['gene', 'p_val', 'logFC', 'p_val_adj']
 GENE_TABLE_COLUMNS = DEG_COLUMNS + ['cell_type', 'SnG_score']
-# Fixed reporting rules used in the published downstream analysis. They affect
-# DEG-derived tables, not the DeepSAS candidate predictions.
-MIN_SNC_FOR_DEG = 6
-MIN_CONTROL_FOR_DEG = 2
-MIN_LOG_FOLD_CHANGE = 0.25
+# Published defaults for downstream reporting. Command-line overrides affect
+# DEG-derived tables only, not the DeepSAS candidate predictions.
+DEFAULT_MIN_SNC_FOR_DEG = 6
+DEFAULT_MIN_CONTROL_FOR_DEG = 2
+DEFAULT_MIN_LOG_FOLD_CHANGE = 0.25
+DEFAULT_NORMALIZATION_TARGET_SUM = 1e4
 
 
 def load_results(args):
@@ -116,10 +117,13 @@ def AttentionEachGene(gene_cell, cell_indices, edge_index_selfloop, attention_sc
     return sums / counts.clamp_min(1)
 
 
-def DEGTable(new_data, output_path, cell_type_col):
+def DEGTable(new_data, output_path, cell_type_col,
+             min_snc=DEFAULT_MIN_SNC_FOR_DEG,
+             min_control=DEFAULT_MIN_CONTROL_FOR_DEG,
+             normalization_target_sum=DEFAULT_NORMALIZATION_TARGET_SUM):
     """Run the existing Wilcoxon comparison only when both groups are usable."""
     adata_deg = new_data.copy()
-    sp.pp.normalize_total(adata_deg, target_sum=1e4)
+    sp.pp.normalize_total(adata_deg, target_sum=normalization_target_sum)
     sp.pp.log1p(adata_deg)
     results = {}
     for cell_type in adata_deg.obs[cell_type_col].unique():
@@ -127,11 +131,11 @@ def DEGTable(new_data, output_path, cell_type_col):
         n_snc = int((adata_sub.obs['ifSnCs'] == '1').sum())
         n_control = int((adata_sub.obs['ifSnCs'] == '0').sum())
         degs = pd.DataFrame(columns=DEG_COLUMNS)
-        if n_snc < MIN_SNC_FOR_DEG or n_control < MIN_CONTROL_FOR_DEG:
+        if n_snc < min_snc or n_control < min_control:
             logger.info('Skipping DEG for %s: %d SnCs, %d controls '
                         '(requires >=%d SnCs and >=%d controls).',
                         cell_type, n_snc, n_control,
-                        MIN_SNC_FOR_DEG, MIN_CONTROL_FOR_DEG)
+                        min_snc, min_control)
         else:
             sp.tl.rank_genes_groups(adata_sub, groupby='ifSnCs', groups=['1'],
                                     reference='0', method='wilcoxon')
@@ -149,14 +153,15 @@ def DEGTable(new_data, output_path, cell_type_col):
     return results
 
 
-def GeneTable2(ct2gene_score_df, deg_results):
+def GeneTable2(ct2gene_score_df, deg_results,
+               min_log_fold_change=DEFAULT_MIN_LOG_FOLD_CHANGE):
     frames = []
     for cell_type, degs in deg_results.items():
         if degs.empty or cell_type not in ct2gene_score_df.columns:
             continue
         selected = degs[
             degs['gene'].isin(ct2gene_score_df.index)
-            & (degs['logFC'] >= MIN_LOG_FOLD_CHANGE)
+            & (degs['logFC'] >= min_log_fold_change)
         ].copy()
         selected['cell_type'] = cell_type
         selected['SnG_score'] = selected['gene'].map(ct2gene_score_df[cell_type])
@@ -168,7 +173,11 @@ def GeneTable2(ct2gene_score_df, deg_results):
 
 
 def generate_tables(new_data, initial_marker, sencell_dict, sen_gene_ls,
-                    attention_scores, edge_index_selfloop, output_path, cell_type_col):
+                    attention_scores, edge_index_selfloop, output_path, cell_type_col,
+                    deg_min_snc=DEFAULT_MIN_SNC_FOR_DEG,
+                    deg_min_control=DEFAULT_MIN_CONTROL_FOR_DEG,
+                    deg_min_logfc=DEFAULT_MIN_LOG_FOLD_CHANGE,
+                    normalization_target_sum=DEFAULT_NORMALIZATION_TARGET_SUM):
     os.makedirs(output_path, exist_ok=True)
     sencell_indices = [int(i) for i in sencell_dict]
     rows = np.asarray(sencell_indices, dtype=np.int64) - new_data.n_vars
@@ -205,8 +214,14 @@ def generate_tables(new_data, initial_marker, sencell_dict, sen_gene_ls,
     ct2gene_score_df = pd.DataFrame(ct2gene_score, index=list(new_data.var_names[sen_gene_ls]))
     ct2gene_score_df.to_csv(os.path.join(output_path, 'Gene_Table1_SnG_scores_per_ct.csv'))
 
-    deg_results = DEGTable(new_data, output_path, cell_type_col)
-    total_df = GeneTable2(ct2gene_score_df, deg_results)
+    deg_results = DEGTable(
+        new_data, output_path, cell_type_col,
+        min_snc=deg_min_snc,
+        min_control=deg_min_control,
+        normalization_target_sum=normalization_target_sum)
+    total_df = GeneTable2(
+        ct2gene_score_df, deg_results,
+        min_log_fold_change=deg_min_logfc)
     total_df.to_csv(os.path.join(output_path, 'Gene_Table2_DEG_ct_SnG_score.csv'), index=False)
     grouped_df = total_df.groupby('gene').agg({
         'cell_type': lambda x: ', '.join(str(value) for value in x.unique()),
@@ -233,7 +248,13 @@ def generate_tables(new_data, initial_marker, sencell_dict, sen_gene_ls,
 def main():
     logging.basicConfig(format='%(asctime)s [%(levelname)s] %(message)s', level=logging.INFO)
     args = utils.parse_args()
-    generate_tables(*load_results(args), cell_type_col=args.cell_type_col)
+    generate_tables(
+        *load_results(args),
+        cell_type_col=args.cell_type_col,
+        deg_min_snc=args.deg_min_snc,
+        deg_min_control=args.deg_min_control,
+        deg_min_logfc=args.deg_min_logfc,
+        normalization_target_sum=args.normalization_target_sum)
 
 
 if __name__ == '__main__':

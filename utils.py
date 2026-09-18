@@ -48,6 +48,45 @@ def parse_args():
                         help='Run ComBat batch correction on --batch_col '
                              'before UMAP. Default off; set this flag to enable.')
 
+    # ---- Optional phenotype-aware extension ----
+    parser.add_argument('--phenotype_aware', action='store_true',
+                        help='Also select SnCs within phenotype groups. The '
+                             'phenotype entry-point enables this automatically.')
+    parser.add_argument('--phenotype_col', type=str, default='Condition',
+                        help="AnnData .obs phenotype column (default: 'Condition')")
+    parser.add_argument('--use_hvg_deg', action='store_true',
+                        help='Before DeepSAS gene selection, retain the union of '
+                             'per-cell-type HVGs, marker genes, and L-R genes')
+    parser.add_argument('--phenotype_hvg_count', type=int, default=1000,
+                        help='HVGs selected per cell type when --use_hvg_deg is '
+                             'enabled (default: 1000)')
+    parser.add_argument('--min_snc_per_phenotype', type=int, default=1,
+                        help='Minimum above-fence SnCs required to retain a '
+                             'phenotype group (default: 1)')
+    parser.add_argument('--phenotype_zscore_threshold', type=float, default=2.0,
+                        help='Z-score cutoff for phenotype-specific SnG reporting '
+                             '(default: 2.0)')
+
+    # ---- Preprocessing ----
+    parser.add_argument('--min_genes_per_cell', type=int, default=200,
+                        help='Discard cells with fewer than this many detected '
+                             'genes (default: 200)')
+    parser.add_argument('--min_cells_per_gene', type=int, default=10,
+                        help='Discard genes detected in fewer than this many '
+                             'cells (default: 10)')
+    parser.add_argument('--normalization_target_sum', type=float, default=1e4,
+                        help='Target total count per observation before log1p '
+                             'normalization (default: 10000)')
+    parser.add_argument('--scale_max_value', type=float, default=10.0,
+                        help='Clip scaled values above this value before PCA '
+                             '(default: 10)')
+    parser.add_argument('--umap_n_neighbors', type=int, default=10,
+                        help='Number of neighbors in the graph used for UMAP '
+                             '(default: 10)')
+    parser.add_argument('--umap_n_pcs', type=int, default=40,
+                        help='Number of principal components used to build the '
+                             'UMAP neighbor graph (default: 40)')
+
     # ---- Model configuration ----
     parser.add_argument('--seed', type=int, default=40,
                         help='Random seed for reproducibility')
@@ -97,7 +136,8 @@ def parse_args():
     parser.add_argument('--cell_hidden_size', type=int, default=128,
                         help='Hidden width of the cell embedding network')
     parser.add_argument('--distance_levels', type=float, nargs=3,
-                        default=(0.0, 0.0, 4.0), metavar=('D1', 'D2', 'D3'),
+                        default=(0.0, 0.0, 4.0),
+                        metavar=('WITHIN_SNC', 'BETWEEN_SNC', 'WITHIN_NON_SNC'),
                         help='Initial learnable target distances for within-type '
                              'SnC, between-type SnC, and same-type non-SnC terms')
     parser.add_argument('--learning_rate', type=float, default=0.01,
@@ -127,6 +167,17 @@ def parse_args():
                              'Jaccard(SnC_t-1, SnC_t) >= tol and '
                              'Jaccard(SnG_t-1, SnG_t) >= tol.')
 
+    # ---- Downstream reporting (does not alter SnC/SnG prediction) ----
+    parser.add_argument('--deg_min_snc', type=int, default=6,
+                        help='Minimum SnCs required in a cell type for the '
+                             'downstream DEG comparison (default: 6)')
+    parser.add_argument('--deg_min_control', type=int, default=2,
+                        help='Minimum non-SnC controls required in a cell type '
+                             'for the downstream DEG comparison (default: 2)')
+    parser.add_argument('--deg_min_logfc', type=float, default=0.25,
+                        help='Minimum log fold change retained in the combined '
+                             'DEG/SnG table (default: 0.25)')
+
     args = parser.parse_args()
 
     if args.emb_size <= 0:
@@ -146,9 +197,18 @@ def parse_args():
     if (args.gat_hidden_size < 1 or args.cell_hidden_size < 1
             or args.min_snc_per_type < 1):
         parser.error('Hidden sizes and minimum SnCs per type must be positive')
+    if (args.min_genes_per_cell < 1 or args.min_cells_per_gene < 1
+            or args.umap_n_neighbors < 1 or args.umap_n_pcs < 1
+            or args.phenotype_hvg_count < 1):
+        parser.error('Preprocessing count parameters must be positive')
+    if args.deg_min_snc < 1 or args.deg_min_control < 1:
+        parser.error('DEG minimum group sizes must be positive')
+    if args.min_snc_per_phenotype < 1:
+        parser.error('--min_snc_per_phenotype must be positive')
     if not np.isfinite(args.distance_levels).all():
         parser.error('--distance_levels values must be finite')
-    for name in ('learning_rate', 'gat_learning_rate', 'lr_decay'):
+    for name in ('learning_rate', 'gat_learning_rate', 'lr_decay',
+                 'normalization_target_sum', 'scale_max_value'):
         value = getattr(args, name)
         if not np.isfinite(value) or value <= 0:
             parser.error('--' + name + ' must be finite and positive')
@@ -156,6 +216,10 @@ def parse_args():
         value = getattr(args, name)
         if not np.isfinite(value) or value < 0:
             parser.error('--' + name + ' must be finite and nonnegative')
+    if not np.isfinite(args.deg_min_logfc):
+        parser.error('--deg_min_logfc must be finite')
+    if not np.isfinite(args.phenotype_zscore_threshold):
+        parser.error('--phenotype_zscore_threshold must be finite')
 
     return args
 
@@ -189,19 +253,21 @@ def _build_cluster_index(adata, ct_name):
     return cluster_cell_ls, cell_cluster_arr, celltype_names
 
 
-def load_example_data(path='example_data/example_data.h5ad', ct_name='clusters'):
+def load_example_data(path='example_data/example_data.h5ad', ct_name='clusters',
+                      min_genes_per_cell=200, min_cells_per_gene=10):
     """Load the bundled small public example dataset."""
     print(f'Load example data from {path} ...')
     adata = sp.read_h5ad(path)
-    sp.pp.filter_cells(adata, min_genes=200)
-    sp.pp.filter_genes(adata, min_cells=10)
+    sp.pp.filter_cells(adata, min_genes=min_genes_per_cell)
+    sp.pp.filter_genes(adata, min_cells=min_cells_per_gene)
     print(f'\tNumber of cells: {adata.shape[0]}\n\tNumber of genes: {adata.shape[1]}')
     cluster_cell_ls, cell_cluster_arr, celltype_names = \
         _build_cluster_index(adata, ct_name)
     return adata, cluster_cell_ls, cell_cluster_arr, celltype_names
 
 
-def load_data1(path, ct_name='clusters'):
+def load_data1(path, ct_name='clusters', min_genes_per_cell=200,
+               min_cells_per_gene=10):
     """Generic AnnData loader. Path must be supplied explicitly."""
     if path is None or not os.path.exists(path):
         raise FileNotFoundError(
@@ -210,21 +276,24 @@ def load_data1(path, ct_name='clusters'):
         )
     print(f'Loading data from {path} ...')
     adata = sp.read_h5ad(path)
-    sp.pp.filter_cells(adata, min_genes=200)
-    sp.pp.filter_genes(adata, min_cells=10)
+    sp.pp.filter_cells(adata, min_genes=min_genes_per_cell)
+    sp.pp.filter_genes(adata, min_cells=min_cells_per_gene)
     print(f'Number of cells: {adata.shape[0]}\nNumber of genes: {adata.shape[1]}')
     cluster_cell_ls, cell_cluster_arr, celltype_names = \
         _build_cluster_index(adata, ct_name)
     return adata, cluster_cell_ls, cell_cluster_arr, celltype_names
 
 
-def load_data_rep(path, ct_name='clusters'):
+def load_data_rep(path, ct_name='clusters', min_genes_per_cell=200,
+                  min_cells_per_gene=10):
     """Loader for subsampled replicate datasets used in the robustness analysis.
 
     The path layout is now configurable; callers must pass an explicit path
     (e.g. './data4_robust_test/rep1_subsample_half.h5ad').
     """
-    return load_data1(path, ct_name=ct_name)
+    return load_data1(path, ct_name=ct_name,
+                      min_genes_per_cell=min_genes_per_cell,
+                      min_cells_per_gene=min_cells_per_gene)
 
 
 # ============================================================================
@@ -283,9 +352,17 @@ def get_ccc_markers(lr_panel_path=None):
     return ligand_receptor_dict, new_gene_set
 
 
+# Built-in legacy marker seed retained unchanged from the original DeepSAS v1
+# workflow for result compatibility. It is used only when ``gene_set=full``.
+_BUILTIN_CELL_CYCLE_MARKERS = (
+    "CDKN1A", "CDKN2A", "TP53", "GADD45A", "IGFBP7", "SERPINE1", "GLB1",
+    "IL6", "IL8", "MMP1", "MMP3",
+)
+
+
 def get_cellcyle_markers():
-    return ["CDKN1A", "CDKN2A", "TP53", "GADD45A", "IGFBP7", "SERPINE1", "GLB1",
-            "IL6", "IL8", "MMP1", "MMP3"]
+    """Return a copy of the built-in legacy cell-cycle marker seed."""
+    return list(_BUILTIN_CELL_CYCLE_MARKERS)
 
 
 def load_markers(args):
@@ -327,19 +404,12 @@ def load_markers(args):
     return markers_ls
 
 
-def load_nonsenmarkers(adata):
-    nonsen_markers = ["CCNB1", "CDK1", "CDC25C", "WEE1", "CHK1", "CCNA2", "PCNA",
-                      "MCM", "RPA", "DHFR", "CCNB1", "AURKA", "AURKB", "PLK1",
-                      "H3S10ph", "BUB1"]
-    return [g for g in nonsen_markers if g in adata.var_names]
-
-
 # ============================================================================
 #                       GENE / GRAPH CONSTRUCTION
 # ============================================================================
-def get_highly_genes(adata, n_genes):
+def get_highly_genes(adata, n_genes, normalization_target_sum=1e4):
     new_data = adata.copy()
-    sp.pp.normalize_total(new_data, target_sum=1e4)
+    sp.pp.normalize_total(new_data, target_sum=normalization_target_sum)
     sp.pp.log1p(new_data)
     sp.pp.highly_variable_genes(new_data, n_top_genes=n_genes)
     return list(new_data.var[new_data.var['highly_variable'] == True].index)
@@ -354,7 +424,9 @@ def combine_genes(adata, markers_ls, args):
         highly_genes = list(adata.var.index)
     else:
         print(f'Using {args.n_genes} highly variable genes!')
-        highly_genes = get_highly_genes(adata, int(args.n_genes))
+        highly_genes = get_highly_genes(
+            adata, int(args.n_genes),
+            getattr(args, 'normalization_target_sum', 1e4))
     print('Highly variable gene count: ', len(highly_genes))
 
     highly_genes = sorted(list(set(highly_genes) - markers_set))
@@ -389,7 +461,8 @@ def combine_genes(adata, markers_ls, args):
     adata_gene_names = list(adata.var.index)
     gene_indexs = [adata_gene_names.index(name) for name in gene_names]
     new_data = adata[:, gene_indexs]
-    assert gene_names[100] == new_data.var.index[100], 'Gene-index mismatch'
+    if gene_names != list(new_data.var_names):
+        raise AssertionError('Gene-index mismatch')
 
     markers_index = []
     for markers in markers_ls:

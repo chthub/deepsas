@@ -1,3 +1,9 @@
+"""Manuscript-specific plotting helpers, not the DeepSAS training pipeline.
+
+Numeric preprocessing and layout values in this module reproduce published
+figures and are intentionally separate from the configurable model settings.
+"""
+
 import numpy as np
 import pandas as pd
 import seaborn as sns

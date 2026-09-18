@@ -51,6 +51,31 @@ class CCCFormulaTests(unittest.TestCase):
 
 
 class TableRegressionTests(unittest.TestCase):
+    def test_small_gene_sets_use_a_full_order_check(self):
+        data = example_data(['Type A'] * 8)
+        args = SimpleNamespace(n_genes='full', normalization_target_sum=1e4)
+        processed = tables.utils.combine_genes(data, [['gene_a']], args)
+        self.assertEqual(processed[-1], list(processed[0].var_names))
+        self.assertEqual(processed[-1], ['gene_b', 'gene_a'])
+
+    def test_reporting_defaults_match_the_published_constants(self):
+        self.assertEqual(tables.DEFAULT_MIN_SNC_FOR_DEG, 6)
+        self.assertEqual(tables.DEFAULT_MIN_CONTROL_FOR_DEG, 2)
+        self.assertEqual(tables.DEFAULT_MIN_LOG_FOLD_CHANGE, .25)
+
+        scores = pd.DataFrame({'Type A': [0.5, 0.5]},
+                              index=['gene_a', 'gene_b'])
+        degs = {'Type A': pd.DataFrame({
+            'gene': ['gene_a', 'gene_b'],
+            'p_val': [.01, .01],
+            'logFC': [.24, .25],
+            'p_val_adj': [.02, .02],
+        })}
+        implicit = tables.GeneTable2(scores, degs)
+        explicit = tables.GeneTable2(scores, degs, min_log_fold_change=.25)
+        pd.testing.assert_frame_equal(implicit, explicit)
+        self.assertEqual(implicit['gene'].tolist(), ['gene_b'])
+
     def test_zero_single_and_multiple_selected_edges(self):
         gene_cell = np.zeros((2, 3))
         no_edges = torch.empty((2, 0), dtype=torch.long)

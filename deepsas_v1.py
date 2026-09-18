@@ -64,10 +64,54 @@ logger.info("====== Part 1: load and process data ======")
 if 'example' in args.exp_name and not os.path.isabs(args.input_data_count) and \
         args.input_data_count == 'example_data/example_data.h5ad':
     adata, cluster_cell_ls, cell_cluster_arr, celltype_names = \
-        utils.load_example_data(path=args.input_data_count, ct_name=args.cell_type_col)
+        utils.load_example_data(
+            path=args.input_data_count,
+            ct_name=args.cell_type_col,
+            min_genes_per_cell=args.min_genes_per_cell,
+            min_cells_per_gene=args.min_cells_per_gene)
 else:
     adata, cluster_cell_ls, cell_cluster_arr, celltype_names = \
-        utils.load_data1(args.input_data_count, ct_name=args.cell_type_col)
+        utils.load_data1(
+            args.input_data_count,
+            ct_name=args.cell_type_col,
+            min_genes_per_cell=args.min_genes_per_cell,
+            min_cells_per_gene=args.min_cells_per_gene)
+
+if args.phenotype_aware:
+    if args.phenotype_col not in adata.obs.columns:
+        raise KeyError(
+            f"Phenotype column '{args.phenotype_col}' not found in adata.obs. "
+            f"Available columns: {list(adata.obs.columns)}. "
+            'Pass --phenotype_col with the correct column name.')
+    if adata.obs[args.phenotype_col].isna().any():
+        raise ValueError(
+            f"Phenotype column '{args.phenotype_col}' contains missing values.")
+    if args.use_hvg_deg:
+        logger.info('Selecting up to %d HVGs per cell type for phenotype mode.',
+                    args.phenotype_hvg_count)
+        selected_genes = set()
+        for cell_type in adata.obs[args.cell_type_col].unique():
+            adata_ct = adata[adata.obs[args.cell_type_col] == cell_type].copy()
+            sp.pp.normalize_total(
+                adata_ct, target_sum=args.normalization_target_sum)
+            sp.pp.log1p(adata_ct)
+            sp.pp.highly_variable_genes(
+                adata_ct, n_top_genes=args.phenotype_hvg_count,
+                flavor='seurat')
+            selected_genes.update(
+                adata_ct.var_names[adata_ct.var['highly_variable']])
+        selected_genes.update(
+            gene for marker_group in utils.load_markers(args)
+            for gene in marker_group if gene in adata.var_names)
+        selected_genes.update(
+            gene for gene in utils.get_ccc_markers(args.lr_panel)[1]
+            if gene in adata.var_names)
+        retained_genes = [
+            gene for gene in adata.var_names if gene in selected_genes]
+        if not retained_genes:
+            raise ValueError('Phenotype HVG selection retained no genes.')
+        adata = adata[:, retained_genes].copy()
+        logger.info('Phenotype HVG union retained %d genes.', adata.n_vars)
 
 new_data, markers_index, sen_gene_ls, nonsen_gene_ls, gene_names = \
     utils.process_data(adata, cluster_cell_ls, cell_cluster_arr, args)
@@ -83,6 +127,10 @@ if args.retrain:
     graph_nx, edge_indexs = utils.build_graph_nx(
         new_data, gene_cell, cell_cluster_arr, sen_gene_ls,
         nonsen_gene_ls, gene_names, args)
+    if args.phenotype_aware:
+        phenotype_values = new_data.obs[args.phenotype_col].to_numpy()
+        for row, phenotype in enumerate(phenotype_values):
+            graph_nx.nodes[row + gene_cell.shape[0]]['phenotype'] = phenotype
 logger.info("Part 1 done.")
 
 
@@ -99,9 +147,9 @@ run_config['device'] = str(device)
 def run_scanpy(adata_in, batch_remove=False, batch_name='Sample'):
     """Default initial embedding: PCA -> kNN -> UMAP (Methods 1.2)."""
     a = adata_in.copy()
-    sp.pp.normalize_total(a, target_sum=1e4)
+    sp.pp.normalize_total(a, target_sum=args.normalization_target_sum)
     sp.pp.log1p(a)
-    sp.pp.scale(a, max_value=10)
+    sp.pp.scale(a, max_value=args.scale_max_value)
     if batch_remove:
         if batch_name not in a.obs.columns:
             raise KeyError(
@@ -113,7 +161,8 @@ def run_scanpy(adata_in, batch_remove=False, batch_name='Sample'):
     else:
         print('Skipping batch correction.')
     sp.tl.pca(a, svd_solver='arpack', random_state=args.seed)
-    sp.pp.neighbors(a, n_neighbors=10, n_pcs=40)
+    sp.pp.neighbors(a, n_neighbors=args.umap_n_neighbors,
+                    n_pcs=args.umap_n_pcs)
     sp.tl.umap(a, n_components=args.emb_size, random_state=args.seed)
     return a.obsm['X_umap']
 
@@ -238,6 +287,23 @@ def generate_ct_specific_scores(sen_gene_ls, gene_cell, edge_index_selfloop,
     return ct_specific_scores
 
 
+def generate_phenotype_specific_scores(
+        sen_gene_ls, gene_cell, edge_index_selfloop, attention_scores,
+        phenotype_values):
+    """Group connected-cell attention scores by phenotype annotation."""
+    scores, connected = mean_attention_by_target(
+        edge_index_selfloop, attention_scores, sen_gene_ls,
+        gene_cell.shape[0] + gene_cell.shape[1])
+    grouped_scores = {}
+    for row, phenotype in enumerate(phenotype_values):
+        cell_index = gene_cell.shape[0] + row
+        if not connected[cell_index]:
+            continue
+        grouped_scores.setdefault(str(phenotype), []).append(
+            [float(scores[cell_index]), int(cell_index)])
+    return grouped_scores
+
+
 def calculate_outliers_v1(scores_index, iqr_multiplier):
     if len(scores_index) == 0:
         return 0, [], []
@@ -266,6 +332,28 @@ def extract_cell_indexs(ct_specific_scores, iqr_multiplier, min_snc_per_type):
         if counts >= min_snc_per_type:
             snc_indexs.extend(snc_index)
     return snc_indexs
+
+
+def extract_phenotype_indexs(
+        phenotype_scores, iqr_multiplier, min_snc_per_phenotype):
+    snc_indexs = []
+    for phenotype, values in phenotype_scores.items():
+        counts, indices, _ = calculate_outliers_v1(
+            np.asarray(values), iqr_multiplier)
+        retained = counts if counts >= min_snc_per_phenotype else 0
+        print(f'Phenotype {phenotype}: {counts} above-fence cells, '
+              f'{retained} retained (minimum {min_snc_per_phenotype})')
+        if retained:
+            snc_indexs.extend(indices)
+    return snc_indexs
+
+
+def count_phenotypes(cell_indices, gene_count, phenotype_values):
+    counts = {}
+    for cell_index in cell_indices:
+        phenotype = str(phenotype_values[int(cell_index) - gene_count])
+        counts[phenotype] = counts.get(phenotype, 0) + 1
+    return counts
 
 
 # --- model + optimizer setup ---
@@ -299,6 +387,8 @@ log_fields = ['iter', 'snc_count', 'sng_count', 'jaccard_snc', 'jaccard_sng',
               'gene_threshold',
               'sng_outlier_count', 'sng_swaps', 'sng_added', 'sng_removed',
               'snc_counts_by_type', 'elapsed_seconds']
+if args.phenotype_aware:
+    log_fields.insert(-1, 'snc_counts_by_phenotype')
 with open(convergence_log_path, 'w', newline='') as f:
     csv.DictWriter(f, fieldnames=log_fields).writeheader()
 
@@ -313,6 +403,16 @@ for epoch in range(args.max_iter):
         attention_scores_cell, graph_nx, celltype_names)
     predicted_cell_indexs = extract_cell_indexs(
         ct_specific_scores, args.iqr_multiplier, args.min_snc_per_type)
+    if args.phenotype_aware:
+        phenotype_scores = generate_phenotype_specific_scores(
+            sen_gene_ls, gene_cell, edge_index_selfloop_cell,
+            attention_scores_cell,
+            new_data.obs[args.phenotype_col].to_numpy())
+        phenotype_cells = extract_phenotype_indexs(
+            phenotype_scores, args.iqr_multiplier,
+            args.min_snc_per_phenotype)
+        predicted_cell_indexs = sorted(
+            set(predicted_cell_indexs).union(phenotype_cells))
     check_celltypes(predicted_cell_indexs, graph_nx, celltype_names)
 
     sencell_dict, nonsencell_dict = build_cell_dict(
@@ -355,6 +455,16 @@ for epoch in range(args.max_iter):
             attention_scores, graph_nx, celltype_names)
         final_cells = extract_cell_indexs(
             final_scores, args.iqr_multiplier, args.min_snc_per_type)
+        if args.phenotype_aware:
+            final_phenotype_scores = generate_phenotype_specific_scores(
+                new_sen_gene_ls, gene_cell, edge_index_selfloop,
+                attention_scores,
+                new_data.obs[args.phenotype_col].to_numpy())
+            final_phenotype_cells = extract_phenotype_indexs(
+                final_phenotype_scores, args.iqr_multiplier,
+                args.min_snc_per_phenotype)
+            final_cells = sorted(
+                set(final_cells).union(final_phenotype_cells))
         all_cells = nonsencell_dict.copy()
         all_cells.update(sencell_dict)
         sencell_dict = {i: all_cells[i] for i in final_cells}
@@ -388,6 +498,10 @@ for epoch in range(args.max_iter):
                sng_update_mode=args.sng_update_mode,
                snc_counts_by_type=json.dumps(counts_by_type), elapsed_seconds=elapsed,
                **gene_diagnostics)
+    if args.phenotype_aware:
+        row['snc_counts_by_phenotype'] = json.dumps(count_phenotypes(
+            sencell_dict, gene_cell.shape[0],
+            new_data.obs[args.phenotype_col].to_numpy()))
     row['sng_added'] = json.dumps(row['sng_added'])
     row['sng_removed'] = json.dumps(row['sng_removed'])
     with open(convergence_log_path, 'a', newline='') as f:
@@ -414,6 +528,10 @@ run_summary.update(status=status, converged=converged, final_epoch=epoch,
                    snc_count=len(sencell_dict), sng_count=len(new_sen_gene_ls),
                    snc_counts_by_type=counts_by_type, final_result=os.path.basename(final_path),
                    convergence_log=os.path.basename(convergence_log_path))
+if args.phenotype_aware:
+    run_summary['snc_counts_by_phenotype'] = count_phenotypes(
+        sencell_dict, gene_cell.shape[0],
+        new_data.obs[args.phenotype_col].to_numpy())
 with open(summary_path, 'w') as f:
     json.dump(run_summary, f, indent=2)
 if status == 'empty_candidates':

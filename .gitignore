@@ -26,5 +26,6 @@
 !tests/
 !tests/test_refinement.py
 !tests/test_tables.py
+!tests/test_phenotype.py
 !scripts/
 !scripts/check_reviewer_example.py

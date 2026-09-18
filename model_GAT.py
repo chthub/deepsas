@@ -5,6 +5,14 @@ from torch.nn import functional as F
 from torch_geometric.nn import GATConv, GAE
 
 
+# Fixed architecture values used by the reported model. They match the PyG
+# defaults used before these choices were made explicit.
+GAT_HEADS = 1
+GAT_CONCAT = True
+GAT_ADD_SELF_LOOPS = True
+GAT_NEGATIVE_SLOPE = 0.2
+
+
 def require_projection_mode(model, type_specific_projections):
     """Reject checkpoints whose projection architecture does not match."""
     has_type_specific = (hasattr(model.encoder, 'gene_projection')
@@ -27,11 +35,19 @@ class GATEncoder(torch.nn.Module):
         if type_specific_projections:
             self.gene_projection = nn.Linear(in_channels, in_channels)
             self.cell_projection = nn.Linear(in_channels, in_channels)
-        # GATConv defaults to one attention head and concatenated heads. Because
-        # DeepSAS builds a binary graph, the encoder needs only node features
-        # and edge indices; there is no separate edge-feature interface.
-        self.conv1 = GATConv(in_channels, hidden_size, dropout=dropout)
-        self.conv2 = GATConv(hidden_size, out_channels, dropout=dropout)
+        # Fixed architecture used in the reported model: two GATConv layers.
+        # These settings are architecture choices rather than dataset-tuning
+        # parameters. Because DeepSAS builds a binary graph, there is no
+        # separate edge-feature interface.
+        gat_options = dict(
+            heads=GAT_HEADS,
+            concat=GAT_CONCAT,
+            negative_slope=GAT_NEGATIVE_SLOPE,
+            add_self_loops=GAT_ADD_SELF_LOOPS,
+            dropout=dropout,
+        )
+        self.conv1 = GATConv(in_channels, hidden_size, **gat_options)
+        self.conv2 = GATConv(hidden_size, out_channels, **gat_options)
 
     def project_node_types(self, x, is_gene):
         """Project gene and cell nodes into a shared feature space."""
