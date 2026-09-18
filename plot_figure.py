@@ -7,7 +7,6 @@ figures and are intentionally separate from the configurable model settings.
 import numpy as np
 import pandas as pd
 import seaborn as sns
-import gseapy as gp
 import os
 
 import scanpy as sp
@@ -819,6 +818,10 @@ def plot_enrichment(df_table2_path="SnGs_data2_1/data1_Gene_Table2_DEG_ct_SnG_sc
                     outdir = "enrichr_results",
                     cut_off=0.1
                     ):
+    # Imported lazily: gseapy>=1.1 uses PEP 585 annotations (Iterable[str]) that
+    # fail to import on Python 3.8, and enrichment is optional for the tutorial.
+    import gseapy as gp
+
     df_table2=pd.read_csv(df_table2_path)
     result_df = df_table2.groupby('cell_type')['gene'].agg(
         gene_count='count',                      # Count the number of genes per cell type
