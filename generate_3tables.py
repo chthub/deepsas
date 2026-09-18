@@ -14,6 +14,11 @@ import utils
 logger = logging.getLogger(__name__)
 DEG_COLUMNS = ['gene', 'p_val', 'logFC', 'p_val_adj']
 GENE_TABLE_COLUMNS = DEG_COLUMNS + ['cell_type', 'SnG_score']
+# Fixed reporting rules used in the published downstream analysis. They affect
+# DEG-derived tables, not the DeepSAS candidate predictions.
+MIN_SNC_FOR_DEG = 6
+MIN_CONTROL_FOR_DEG = 2
+MIN_LOG_FOLD_CHANGE = 0.25
 
 
 def load_results(args):
@@ -122,10 +127,11 @@ def DEGTable(new_data, output_path, cell_type_col):
         n_snc = int((adata_sub.obs['ifSnCs'] == '1').sum())
         n_control = int((adata_sub.obs['ifSnCs'] == '0').sum())
         degs = pd.DataFrame(columns=DEG_COLUMNS)
-        # Preserve the original >5 SnC rule; Scanpy also needs >=2 controls.
-        if n_snc <= 5 or n_control < 2:
+        if n_snc < MIN_SNC_FOR_DEG or n_control < MIN_CONTROL_FOR_DEG:
             logger.info('Skipping DEG for %s: %d SnCs, %d controls '
-                        '(requires >5 SnCs and >=2 controls).', cell_type, n_snc, n_control)
+                        '(requires >=%d SnCs and >=%d controls).',
+                        cell_type, n_snc, n_control,
+                        MIN_SNC_FOR_DEG, MIN_CONTROL_FOR_DEG)
         else:
             sp.tl.rank_genes_groups(adata_sub, groupby='ifSnCs', groups=['1'],
                                     reference='0', method='wilcoxon')
@@ -149,7 +155,8 @@ def GeneTable2(ct2gene_score_df, deg_results):
         if degs.empty or cell_type not in ct2gene_score_df.columns:
             continue
         selected = degs[
-            degs['gene'].isin(ct2gene_score_df.index) & (degs['logFC'] >= 0.25)
+            degs['gene'].isin(ct2gene_score_df.index)
+            & (degs['logFC'] >= MIN_LOG_FOLD_CHANGE)
         ].copy()
         selected['cell_type'] = cell_type
         selected['SnG_score'] = selected['gene'].map(ct2gene_score_df[cell_type])

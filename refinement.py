@@ -4,6 +4,9 @@ import numpy as np
 import torch
 
 
+_FIXED10_UPDATE_COUNT = 10
+
+
 def mean_attention_by_target(edge_index, attention, source_indices, num_nodes):
     """Mean over connected selected sources; sum attention heads as in v1."""
     source_mask = torch.zeros(num_nodes, dtype=torch.bool)
@@ -20,13 +23,20 @@ def mean_attention_by_target(edge_index, attention, source_indices, num_nodes):
     return sums / counts.clamp_min(1), counts > 0
 
 
-def update_gene_candidates(scores, current_genes, iqr_multiplier=1.5):
-    """Replace weak candidates with strictly better, above-fence nonmembers.
+def update_gene_candidates(scores, current_genes, iqr_multiplier, update_mode):
+    """Update SnG candidates with the IQR rule or fixed-10 compatibility rule.
 
-    The fence and requested swap count use the current SnG candidates' scores,
-    including zeros. The count is the number above that fence. Actual accepted
-    replacements are bounded by this count and can be zero. Gene ID breaks
-    score ties deterministically; input order never affects membership.
+    In ``iqr`` mode, the fence and requested swap count use the current SnG
+    candidates' scores, including zeros. The count is the number above that
+    fence. Replacements must strictly improve the score.
+
+    In ``fixed10`` mode, ten replacements are requested on every call, matching
+    the fixed-count policy used before the IQR rule was implemented. The ten
+    highest-scoring nonmembers replace the ten lowest-scoring current members;
+    unlike the historical implementation, candidate IDs remain unique.
+
+    Gene ID breaks score ties deterministically; input order never affects
+    membership.
     """
     scores = np.asarray(scores, dtype=float)
     current = np.unique(np.asarray(current_genes, dtype=np.int64))
@@ -34,20 +44,31 @@ def update_gene_candidates(scores, current_genes, iqr_multiplier=1.5):
         raise ValueError('SnG scores must be a nonempty, finite one-dimensional array')
     if not np.isfinite(iqr_multiplier) or iqr_multiplier < 0:
         raise ValueError('IQR multiplier must be finite and nonnegative')
+    if update_mode not in ('iqr', 'fixed10'):
+        raise ValueError("SnG update mode must be 'iqr' or 'fixed10'")
     if current.size and (current.min() < 0 or current.max() >= scores.size):
         raise ValueError('Candidate gene index is outside the score array')
     if not current.size:
         return current, dict(gene_threshold=None, sng_outlier_count=0,
                              sng_swaps=0, sng_added=[], sng_removed=[])
-    q1, q3 = np.percentile(scores[current], [25, 75])
-    threshold = float(q3 + iqr_multiplier * (q3 - q1))
-    requested_swaps = int(np.count_nonzero(scores[current] > threshold))
-    outliers = np.flatnonzero(scores > threshold)
-    entrants = np.setdiff1d(outliers, current)
+    if update_mode == 'iqr':
+        q1, q3 = np.percentile(scores[current], [25, 75])
+        threshold = float(q3 + iqr_multiplier * (q3 - q1))
+        requested_swaps = int(np.count_nonzero(scores[current] > threshold))
+        eligible = np.flatnonzero(scores > threshold)
+    else:
+        threshold = None
+        requested_swaps = _FIXED10_UPDATE_COUNT
+        eligible = np.arange(scores.size)
+
+    entrants = np.setdiff1d(eligible, current)
     entrants = entrants[np.lexsort((entrants, -scores[entrants]))]
     outgoing = current[np.lexsort((current, scores[current]))]
     limit = min(requested_swaps, len(entrants), len(outgoing))
-    accepted = scores[entrants[:limit]] > scores[outgoing[:limit]]
+    if update_mode == 'iqr':
+        accepted = scores[entrants[:limit]] > scores[outgoing[:limit]]
+    else:
+        accepted = np.ones(limit, dtype=bool)
     added, removed = entrants[:limit][accepted], outgoing[:limit][accepted]
     updated = np.union1d(np.setdiff1d(current, removed), added)
     return updated, {

@@ -7,6 +7,7 @@ DeepSAS (**Deep**-learning framework for cell-type-specific **S**nCs **A**nd **S
 Cellular senescence is a state of permanent cell cycle arrest that plays important roles in development, tissue homeostasis, aging, and disease. Identifying senescent cells in heterogeneous tissues is challenging due to the lack of universal markers. DeepSAS leverages graph neural networks and contrastive learning to identify senescent cells and their associated gene signatures from single-cell RNA sequencing data.
 
 The framework integrates several key components:
+
 1. Graph representation of cell-gene interactions
 2. Graph Attention Networks (GAT) for capturing complex relationships
 3. Contrastive learning with multi-level distance optimization
@@ -26,14 +27,13 @@ The framework integrates several key components:
 
 This project is developed and tested on Linux and macOS environments.
 
-
 1. **Clone the Repository**:
+
    ```bash
    git clone https://github.com/chthub/deepsas.git
    cd deepsas/
    git checkout deepsas-v1
    ```
-
 2. **Set Up a uv Environment** (recommended):
    We recommend to use uv for the environment mangement. Check this [link](https://docs.astral.sh/uv/) to install uv.
 
@@ -41,21 +41,29 @@ This project is developed and tested on Linux and macOS environments.
    uv venv --python 3.8.20
    source .venv/bin/activate
    ```
-
 3. **Install Dependencies**:
-   
+
    ```bash
-   uv pip install numpy seaborn matplotlib pandas tabulate linetimer scikit-learn ipykernel 'scanpy[leiden]' tqdm gseapy 
+   uv pip install numpy seaborn matplotlib pandas tabulate linetimer scikit-learn ipykernel 'scanpy[leiden]' tqdm gseapy
    ```
+
    For [Pytorch](https://pytorch.org/) and [PyG](https://pytorch-geometric.readthedocs.io/en/latest/install/installation.html),  ensure you select the CUDA version that best suits your system. Below is an example from our test environment:
+
    ```bash
    uv pip install torch==2.4.0 torchvision==0.19.0 torchaudio==2.4.0 --index-url https://download.pytorch.org/whl/cu121
-   uv pip install torch_geometric pyg_lib torch_scatter torch_sparse torch_cluster torch_spline_conv -f https://data.pyg.org/whl/torch-2.4.0+cu121.html 
+   uv pip install torch_geometric pyg_lib torch_scatter torch_sparse torch_cluster torch_spline_conv -f https://data.pyg.org/whl/torch-2.4.0+cu121.html
    ```
 
 ## Quick Start
 
 ### Basic Usage
+
+> **The default parameters are used only for running on the sample dataset and paper reproduce.** They have been validated on
+> the bundled example dataset and are not universal settings. Before running
+> DeepSAS on another dataset, adapt and validate the preprocessing, cell-type
+> annotations, gene set, CCC settings, candidate thresholds, projection mode,
+> optimization settings, and stopping criteria for that dataset. Do not assume
+> that the example defaults or resulting SnC/SnG calls transfer unchanged.
 
 Run the following commands from the repository directory. The first command trains on the bundled example with the default parameters; the second generates tables from its final result. On a cluster, run training on a compute node.
 
@@ -66,7 +74,7 @@ uv run python -u generate_3tables.py --output_dir ./outputs --exp_name example -
 
 Outputs are written to `./outputs/example/`. `--output_dir` specifies the base directory and is honored by both commands; use the same value and experiment name for training and table generation. The training log and `example_run_summary.json` report how refinement stopped.
 
-The reference run with the default algorithm parameters (seed `40`) on an A100, using Python `3.8.20`, PyTorch `2.4.0+cu121`, PyG `2.6.1`, and Scanpy `1.9.8`, retained 1,999 cells and 13,326 genes after preprocessing. It converged at zero-based iteration `3` with 42 SnCs and 274 unique candidate SnGs; both final Jaccard indices were `1.0`. All eight summary tables were generated, including 174 gene–cell-type rows in the DEG/SnG table. This run used four CPU threads and `PYTHONHASHSEED=40`. After generating tables, check their identities and counts with:
+A new end-to-end run should use `--retrain`; checkpoints made with a different projection mode are rejected explicitly. Result counts are dataset- and configuration-dependent. The outputs can be inspected with:
 
 ```bash
 uv run python scripts/check_reviewer_example.py ./outputs/example
@@ -77,7 +85,7 @@ uv run python scripts/check_reviewer_example.py ./outputs/example
 DeepSAS follows a 4-step workflow:
 
 1. **Data Loading & Preprocessing**: Filters genes/cells and constructs the cell-gene graph
-2. **Initial Embedding Generation**: Creates UMAP embeddings via scanpy 
+2. **Initial Embedding Generation**: Creates UMAP embeddings via scanpy
 3. **Graph Attention Network Training**: Learns the graph structure with GATConv layers
 4. **Contrastive Learning**: Refines embeddings to identify senescent cells and genes
 
@@ -95,21 +103,23 @@ If no SnCs are detected, the cell score table still contains every processed cel
 
 This generates several output tables:
 
-1. **Cell-level analysis**: 
+1. **Cell-level analysis**:
+
    - Cell senescence scores and binary classification (senescent/non-senescent)
    - Distribution of senescent cells across cell types
+2. **Gene-level analysis**:
 
-2. **Gene-level analysis**: 
    - Differentially expressed genes between senescent and non-senescent cells
    - Cell-type specific senescence-associated genes with statistical measures
    - Aggregated gene information across multiple cell types
-
 3. **Statistical measures**:
+
    - p-values and adjusted p-values from Wilcoxon rank-sum tests
    - Log fold-changes showing expression differences
    - Senescence-associated gene (SnG) scores derived from attention weights
 
 For visualization and downstream analysis, follow the tutorial in [`tutorial.ipynb`](./tutorial.ipynb), which demonstrates:
+
 - UMAP visualization of senescent cells
 - Gene set enrichment analysis of identified senescence markers
 - Cell-type specific senescence marker analysis and interpretation
@@ -117,6 +127,7 @@ For visualization and downstream analysis, follow the tutorial in [`tutorial.ipy
 ### Large Dataset Analysis
 
 For datasets with many cells (>50,000), use the sampling approach detailed in [Sampling_Tutorial.md](./Sampling_Tutorial.md), which provides:
+
 - Subsampling strategies
 - Batch processing scripts
 - Result integration methods
@@ -125,10 +136,10 @@ For datasets with many cells (>50,000), use the sampling approach detailed in [S
 
 To incorporate the phenotype information into the analysis, please following the tutorial in [`phenotype_analysis`](./phenotype_analysis/README.md).
 
-
 ## Input Data Format
 
 DeepSAS works with h5ad format (AnnData objects from Scanpy). The input data should include:
+
 - Gene expression matrix (cells × genes) in sparse or dense format
 - Cell type annotations in `adata.obs['clusters']` or another specified column
 - (Optional) Additional metadata like batch information for batch effect correction
@@ -153,53 +164,70 @@ Run `uv run python deepsas_v1.py --help` for the full command-line interface. Th
 
 ### Model Configuration
 
-| Parameter | Default | Role |
-| --- | --- | --- |
-| `--seed` | `40` | Random seed, including PCA and UMAP |
-| `--n_genes` | `full` | All retained genes, or a requested number of highly variable genes plus available marker genes |
-| `--gene_set` | `full` | Initial senescence marker lists; alternatives include `senmayo`, `fridman`, and `cellage` |
-| `--emb_size` | `12` | Cell and gene embedding dimension |
-| `--ccc` | `type1` | Binary CCC edges; `type3` omits CCC edges |
-| `--ccc_threshold` | `0.8` | Signaling-score threshold φ for retaining CCC edges |
-| `--lr_panel` | Built-in panel | Optional ligand–receptor CSV with `ligand` and `receptor` columns |
+| Parameter                                                            | Default           | Role                                                                                                         |
+| -------------------------------------------------------------------- | ----------------- | ------------------------------------------------------------------------------------------------------------ |
+| `--seed`                                                           | `40`            | Random seed, including PCA and UMAP                                                                          |
+| `--n_genes`                                                        | `full`          | All retained genes, or a requested number of highly variable genes plus available marker genes               |
+| `--gene_set`                                                       | `full`          | Initial senescence marker lists; alternatives include`senmayo`, `fridman`, and `cellage`               |
+| `--emb_size`                                                       | `12`            | Cell and gene embedding dimension                                                                            |
+| `--type_specific_projections` / `--no_type_specific_projections` | enabled           | Use separate gene/cell input projections by default, or explicitly select a shared GAT projection            |
+| `--ccc`                                                            | `type1`         | Binary CCC edges;`type3` omits CCC edges                                                                   |
+| `--ccc_threshold`                                                  | `0.8`           | Signaling-score threshold φ for retaining CCC edges                                                         |
+| `--lr_panel`                                                       | Built-in panel    | Optional ligand–receptor CSV with`ligand` and `receptor` columns                                        |
 
-The graph uses binary connectivity. `edge_dim=None` means that the GAT receives no separate continuous edge feature vector: cell–gene expression presence and thresholded CCC connections are represented by the edges themselves.
+The graph uses binary connectivity: cell–gene expression presence and thresholded CCC connections are represented by graph topology. The GAT therefore accepts node features and edge indices only; the implementation does not expose an edge-feature dimension parameter. CCC probabilities are computed independently for each available ligand–receptor pair and then averaged, matching Methods 1.2.
 
 ### Training and Candidate Selection
 
-| Parameter | Default | Role |
-| --- | --- | --- |
-| `--gat_epoch` | `30` | Graph autoencoder training epochs |
-| `--gat_learning_rate` | `0.001` | Graph autoencoder Adam learning rate |
-| `--gat_hidden_size` | `32` | GAT hidden width |
-| `--gat_dropout` | `0.6` | Attention dropout during GAT training; disabled for candidate scoring |
-| `--cell_optim_epoch` | `50` | Cell embedding optimization epochs per outer iteration |
-| `--learning_rate` | `0.01` | Initial Adam learning rate for cell embedding optimization |
-| `--weight_decay` | `0.001` | Cell optimizer weight decay |
-| `--lr_decay` | `0.85` | Cell learning-rate multiplier after each outer iteration |
-| `--iqr_multiplier` | `1.5` | Upper-fence multiplier for SnC and SnG scores |
-| `--min_snc_per_type` | `10` | At least this many above-fence SnCs are required to retain a cell type's candidates |
-| `--max_iter` | `10` | Maximum number of completed outer refinement iterations |
-| `--convergence_tol` | `0.99` | Required Jaccard overlap for both candidate sets |
+| Parameter               | Default   | Role                                                                                       |
+| ----------------------- | --------- | ------------------------------------------------------------------------------------------ |
+| `--gat_epoch`         | `30`    | Graph autoencoder training epochs                                                          |
+| `--gat_learning_rate` | `0.001` | Graph autoencoder Adam learning rate                                                       |
+| `--gat_hidden_size`   | `32`    | GAT hidden width                                                                           |
+| `--gat_dropout`       | `0.6`   | Attention dropout during GAT training; disabled for candidate scoring                      |
+| `--cell_optim_epoch`  | `50`    | Cell embedding optimization epochs per outer iteration                                     |
+| `--cell_hidden_size`  | `128`   | Hidden width of the cell embedding network                                                 |
+| `--distance_levels`   | `0 0 4` | Initial learnable targets for the three active distance-loss terms                         |
+| `--learning_rate`     | `0.01`  | Initial Adam learning rate for cell embedding optimization                                 |
+| `--weight_decay`      | `0.001` | Cell optimizer weight decay                                                                |
+| `--lr_decay`          | `0.85`  | Cell learning-rate multiplier after each outer iteration                                   |
+| `--iqr_multiplier`    | `1.5`   | Upper-fence multiplier for SnC scores and for SnG scores in`iqr` mode                    |
+| `--sng_update_mode`   | `iqr`   | SnG update rule: the default threshold-driven IQR policy or the optional`fixed10` policy |
+| `--min_snc_per_type`  | `1`     | At least this many above-fence SnCs are required to retain a cell type's candidates        |
+| `--max_iter`          | `10`    | Maximum number of completed outer refinement iterations                                    |
+| `--convergence_tol`   | `0.9`   | Required Jaccard overlap for both candidate sets                                           |
 
-These defaults are exposed for reproducibility and adjustment; they are not presented as universally optimal settings. Fixed architecture and preprocessing settings are:
+These example-dataset defaults are exposed for reproducibility and must be adapted and validated for other datasets. Architecture and preprocessing settings include:
 
-- Two GAT layers with one attention head per layer.
-- Cell embedding network: hidden width `128`, CELU activation, and layer normalization. The three active distance-level parameters start at `0, 0, 4` and are learned during optimization.
+- By default, separate learned projections map gene and cell embeddings into the shared GAT feature space. Pass `--no_type_specific_projections` to use the shared projection path instead; switching modes requires retraining the GAT checkpoint.
+- Cell embedding network: CELU activation and layer normalization. Its hidden width and the initial values of the three learned distance targets are configured by `--cell_hidden_size` and `--distance_levels`.
 - Input filtering: at least `200` detected genes per cell and expression in at least `10` cells per gene.
 - Initial embeddings: normalization to `10,000` counts, log transformation, scaling clipped at `10`, PCA, a neighbor graph with `10` neighbors and `40` PCs, and UMAP.
+- Downstream DEG tables: a comparison requires at least `6` SnCs and `2` controls; the combined DEG/SnG table retains hits with log fold change at least `0.25`. These reporting rules do not alter the predicted SnC or SnG sets.
 
-For compatibility, the parser still accepts `--sencell_num`, `--sengene_num`, `--sencell_epoch`, `--use_autoencoder`, `--timestamp`, and `--batch_id`. These options do not affect the main `deepsas_v1.py` pipeline. Candidate counts are determined by the score thresholds, and initial embeddings use UMAP.
+Obsolete options that did not affect the main pipeline have been removed. SnC candidates are determined by their score thresholds; SnG updates follow `--sng_update_mode`; initial embeddings use UMAP.
 
 ### SnG Updates and Stopping
 
 The upper fence `Q3 + iqr_multiplier × IQR` is a score threshold. For SnGs, its quartiles are calculated over the scores of the **current unique candidate genes**, including zeros. The number of current candidates strictly above this threshold defines the requested replacement count `D2*`. Up to this many above-fence genes outside the candidate set may replace lower-scoring current candidates, pairing the highest-scoring entrants with the lowest-scoring current genes. Each replacement must strictly improve the score. The actual count satisfies `0 <= D2 <= D2*` and may be smaller when suitable new genes are unavailable. If no current candidate exceeds the upper fence, no genes are replaced. Candidate gene IDs remain unique. The working SnG candidate set is global; cell-type-specific gene scores and differential-expression tables are computed downstream.
 
-The convergence log records `D2*` as `sng_outlier_count` and the accepted count `D2` as `sng_swaps`.
+In `iqr` mode, the convergence log records `D2*` as `sng_outlier_count` and
+the accepted count `D2` as `sng_swaps`. In `fixed10` mode,
+`sng_outlier_count` records the requested count of 10. The
+`sng_update_mode` column identifies the active rule.
 
-The pretrained GAT embeddings are retained as fixed inputs to cell embedding optimization across outer iterations. When recomputing attention, the graph retains its original gene input features and updates only the cell rows with the optimized cell embeddings.
+To use the alternative fixed-count SnG update policy, pass
+`--sng_update_mode fixed10`. This mode requests ten replacements per iteration:
+the ten highest-scoring genes outside the current candidate set replace the ten
+lowest-scoring current candidates (or all available genes when either side has
+fewer than ten). Candidate IDs remain unique. The default `iqr` mode uses the
+threshold-driven rule described above.
 
-After updating embeddings, attention, and genes, SnC labels are recalculated to produce a complete iteration state. Outer convergence uses `J(A, B) = |A ∩ B| / |A ∪ B|` between adjacent completed states: both SnC and SnG Jaccard values must reach `--convergence_tol`, and both previous and current sets must be nonempty. `--convergence_tol 1` requests exact membership equality. Loss is optimized within each iteration; it is not the outer stopping criterion. Since gene replacement can stop, a SnG Jaccard value of `1` is attainable. Convergence is not guaranteed within the iteration limit.
+The pretrained GAT embeddings are retained as fixed inputs to cell embedding optimization across outer iterations. When recomputing attention, the graph retains its original gene input features, updates only the cell rows with the optimized cell embeddings, and uses attention coefficients from the final GAT layer for candidate scoring.
+
+After updating embeddings, attention, and genes, SnC labels are recalculated to produce a complete iteration state. Outer convergence uses `J(A, B) = |A ∩ B| / |A ∪ B|` between adjacent completed states: both SnC and SnG Jaccard values must reach `--convergence_tol`, and both previous and current sets must be nonempty. The default tolerance is `0.9`; `--convergence_tol 1` requests exact membership equality. Loss is optimized within each iteration; it is not the outer stopping criterion. In `fixed10` mode, compulsory gene turnover can keep the SnG Jaccard below `1` (ten disjoint replacements in 274 candidates give approximately `0.9296`), while `iqr` mode can make zero replacements and attain exact stability. Convergence is not guaranteed within the iteration limit.
+
+Ideally, the model is considered to have converged if the candidate set remains unchanged between consecutive iterations. However, in practice, we have observed fluctuations where individual genes or cells repeatedly enter and exit the set. In such cases, the Jaccard similarity may fail to reach 0.99 even though the model has attained a stable state. 
 
 ## Output Files
 
@@ -222,22 +250,22 @@ Each iteration and final `.data` file stores the SnC dictionary, unique candidat
 After running `generate_3tables.py`, you'll also get a folder `Senescent_Tables` in the output path. In this folder you have:
 
 1. **Cell_Table1_SnC_scores.csv**: Information about each cell and its senescence score
+
    - Contains cell IDs, names, types, binary senescent indicator, and senescence scores
-
 2. **Gene_Table2_DEG_ct_SnG_score.csv**: Differentially expressed genes between senescent and non-senescent cells
+
    - Includes gene names, cell types, p-values, log fold-changes, adjusted p-values, and senescence scores
-
 3. **Gene_Table3_gene_ct_count.csv**: Gene summaries across cell types, including initial-marker membership
-   - **Gene_newTable3_gene_ct_count.csv** contains the subset reported in one cell type
 
+   - **Gene_newTable3_gene_ct_count.csv** contains the subset reported in one cell type
 4. **Additional tables**:
+
    - **Cell_Table2_SnCs_per_ct.csv**: Counts of total cells and senescent cells per cell type
    - **Gene_Table1_SnG_scores_per_ct.csv**: Candidate gene attention scores for each cell type with SnCs
    - **table2ByCelltype.csv**: Table 2 grouped by cell type
    - **table2ByGene.csv**: Table 2 grouped by gene
 
 For detailed explanations of each table and column, see [Senescent_Tables_Explanation.md](./Senescent_Tables_Explanation.md)
-
 
 ## Citation
 

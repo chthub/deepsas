@@ -11,7 +11,6 @@ from torch_geometric.utils import to_undirected
 import networkx as nx
 from tabulate import tabulate
 from scipy import sparse as scsp
-from numba import jit
 
 
 # ============================================================================
@@ -36,11 +35,8 @@ def parse_args():
                         help='Experiment name (used for output directory naming)')
     parser.add_argument('--device_index', type=int, default=0,
                         help='CUDA device index to use')
-    parser.add_argument('--retrain', action='store_true', default=False,
+    parser.add_argument('--retrain', action='store_true',
                         help='Whether to retrain the GAT or load the saved one')
-    parser.add_argument('--timestamp', type=str, default='',
-                        help='Legacy compatibility option; unused by deepsas_v1.py')
-
     # ---- Dataset-specific column names (new) ----
     parser.add_argument('--cell_type_col', type=str, default='clusters',
                         help="AnnData .obs column containing cell-type labels "
@@ -48,7 +44,7 @@ def parse_args():
     parser.add_argument('--batch_col', type=str, default='Sample',
                         help="AnnData .obs column containing batch labels for "
                              "ComBat correction (default: 'Sample')")
-    parser.add_argument('--batch_remove', action='store_true', default=False,
+    parser.add_argument('--batch_remove', action='store_true',
                         help='Run ComBat batch correction on --batch_col '
                              'before UMAP. Default off; set this flag to enable.')
 
@@ -69,9 +65,18 @@ def parse_args():
                              'senmayo+fridman+cellage)')
     parser.add_argument('--emb_size', type=int, default=12,
                         help='Embedding dimension size')
-    parser.add_argument('--use_autoencoder', action='store_true', default=False,
-                        help='Legacy compatibility option; deepsas_v1.py uses UMAP '
-                             'and ignores this flag')
+    projection_group = parser.add_mutually_exclusive_group()
+    projection_group.add_argument(
+        '--type_specific_projections', dest='type_specific_projections',
+        action='store_true',
+        help='Use separate learned input projections for gene and cell nodes '
+             '(default)')
+    projection_group.add_argument(
+        '--no_type_specific_projections', dest='type_specific_projections',
+        action='store_false',
+        help='Feed gene and cell embeddings directly to the shared GAT layers '
+             'instead of the default type-specific projections')
+    parser.set_defaults(type_specific_projections=True)
     parser.add_argument('--lr_panel', type=str, default=None,
                         help='Optional path to a user-supplied L-R panel CSV with '
                              'columns "ligand" and "receptor" (one row per L-R '
@@ -87,17 +92,14 @@ def parse_args():
                         help='Hidden width of the two-layer, single-head GAT')
     parser.add_argument('--gat_dropout', type=float, default=0.6,
                         help='Attention dropout during GAT training')
-    parser.add_argument('--sencell_num', type=int, default=600,
-                        help='Legacy compatibility option; unused by deepsas_v1.py '
-                             '(SnCs are selected by their score threshold)')
-    parser.add_argument('--sengene_num', type=int, default=200,
-                        help='Legacy compatibility option; unused by deepsas_v1.py '
-                             '(SnG candidates start from the marker list)')
-    parser.add_argument('--sencell_epoch', type=int, default=40,
-                        help='Legacy compatibility option; deepsas_v1.py uses '
-                             '--max_iter and --cell_optim_epoch instead')
     parser.add_argument('--cell_optim_epoch', type=int, default=50,
                         help='Number of epochs for cell embedding optimization')
+    parser.add_argument('--cell_hidden_size', type=int, default=128,
+                        help='Hidden width of the cell embedding network')
+    parser.add_argument('--distance_levels', type=float, nargs=3,
+                        default=(0.0, 0.0, 4.0), metavar=('D1', 'D2', 'D3'),
+                        help='Initial learnable target distances for within-type '
+                             'SnC, between-type SnC, and same-type non-SnC terms')
     parser.add_argument('--learning_rate', type=float, default=0.01,
                         help='Initial learning rate')
     parser.add_argument('--weight_decay', type=float, default=0.001,
@@ -105,18 +107,21 @@ def parse_args():
     parser.add_argument('--lr_decay', type=float, default=0.85,
                         help='Learning-rate multiplier after each outer iteration')
     parser.add_argument('--iqr_multiplier', type=float, default=1.5,
-                        help='Upper-fence multiplier for both SnC and SnG scores')
-    parser.add_argument('--min_snc_per_type', type=int, default=10,
+                        help='Upper-fence multiplier for SnC scores and for SnG '
+                             'scores when --sng_update_mode=iqr')
+    parser.add_argument('--sng_update_mode', type=str, default='iqr',
+                        choices=['iqr', 'fixed10'],
+                        help='SnG candidate update rule: dynamic IQR-based '
+                             'replacement (default) or a fixed-count policy '
+                             'requesting 10 replacements per iteration')
+    parser.add_argument('--min_snc_per_type', type=int, default=1,
                         help='Minimum candidate SnCs retained in a cell type')
-    parser.add_argument('--batch_id', type=int, default=0,
-                        help='Legacy compatibility option; unused by deepsas_v1.py')
-
     # ---- Contrastive-learning convergence (new) ----
     parser.add_argument('--max_iter', type=int, default=10,
                         help='Hard ceiling on the number of contrastive '
                              'refinement iterations; reaching this limit is '
                              'reported separately from convergence.')
-    parser.add_argument('--convergence_tol', type=float, default=0.99,
+    parser.add_argument('--convergence_tol', type=float, default=0.9,
                         help='Jaccard tolerance for SnC and SnG sets between '
                              'adjacent iterations. The loop exits when both '
                              'Jaccard(SnC_t-1, SnC_t) >= tol and '
@@ -126,7 +131,7 @@ def parse_args():
 
     if args.emb_size <= 0:
         parser.error('Embedding size must be positive')
-    if args.gat_epoch <= 0 or args.sencell_epoch <= 0 or args.cell_optim_epoch <= 0:
+    if args.gat_epoch <= 0 or args.cell_optim_epoch <= 0:
         parser.error('Number of epochs must be positive')
     if not (0.0 < args.convergence_tol <= 1.0):
         parser.error('--convergence_tol must be in (0, 1]')
@@ -138,8 +143,11 @@ def parse_args():
         parser.error('--ccc_threshold must be in [0, 1]')
     if not (0 <= args.gat_dropout < 1):
         parser.error('--gat_dropout must be in [0, 1)')
-    if args.gat_hidden_size < 1 or args.min_snc_per_type < 1:
-        parser.error('GAT hidden size and minimum SnCs per type must be positive')
+    if (args.gat_hidden_size < 1 or args.cell_hidden_size < 1
+            or args.min_snc_per_type < 1):
+        parser.error('Hidden sizes and minimum SnCs per type must be positive')
+    if not np.isfinite(args.distance_levels).all():
+        parser.error('--distance_levels values must be finite')
     for name in ('learning_rate', 'gat_learning_rate', 'lr_decay'):
         value = getattr(args, name)
         if not np.isfinite(value) or value <= 0:
@@ -400,14 +408,7 @@ def process_data(adata, cluster_cell_ls, cell_cluster_arr, args):
 
 def build_graph_nx(adata, gene_cell, cell_cluster_arr, sen_gene_ls,
                    nonsen_gene_ls, gene_names, args):
-    """Construct the heterogeneous cell-gene graph, optionally augmented with
-    cell-cell edges from the L-R-derived CCC matrix.
-
-    The reviewer correctly noted that the type2 (continuous) branch in v1
-    built continuous edge weights but never piped them into the GAT. The
-    weights are now consumed by GATv2Conv(edge_dim=1) in the encoder; see
-    model_GAT.py.
-    """
+    """Construct the binary cell-gene graph and optional binary CCC edges."""
     lr_panel_path = getattr(args, 'lr_panel', None)
     g_index, c_index = np.nonzero(gene_cell)
     print('Cell-gene graph, the number of edges:', len(g_index))
@@ -416,7 +417,7 @@ def build_graph_nx(adata, gene_cell, cell_cluster_arr, sen_gene_ls,
 
     if args.ccc == 'type1':
         print('Adding cell-cell edges with binary weights ...')
-        adj_matrix, _ = build_ccc_graph(
+        adj_matrix = build_ccc_graph(
             gene_cell, gene_names, lr_panel_path, args.ccc_threshold)
         i1, i2 = np.nonzero(adj_matrix)
         print('CCC graph, the number of edges:', len(i1))
@@ -424,11 +425,9 @@ def build_graph_nx(adata, gene_cell, cell_cluster_arr, sen_gene_ls,
         edge_index = torch.tensor(np.array([np.concatenate([g_index, i1]),
                                             np.concatenate([c_index, i2])]),
                                   dtype=torch.long)
-        ccc_matrix = None
     else:
         print('No cell-cell edges (type3) ...')
         edge_index = torch.tensor(np.array([g_index, c_index]), dtype=torch.long)
-        ccc_matrix = None
 
     graph_nx = nx.Graph(edge_index.T.tolist())
     for i in range(gene_num):
@@ -442,7 +441,7 @@ def build_graph_nx(adata, gene_cell, cell_cluster_arr, sen_gene_ls,
         graph_nx.nodes[i + gene_num]['cluster'] = cell_cluster_arr[i]
         graph_nx.nodes[i + gene_num]['index'] = i + gene_num
         graph_nx.nodes[i + gene_num]['name'] = cell_names[i]
-    return graph_nx, edge_index, ccc_matrix
+    return graph_nx, edge_index
 
 
 def add_nx_embedding(graph_nx, gene_embed, cell_embed):
@@ -453,7 +452,7 @@ def add_nx_embedding(graph_nx, gene_embed, cell_embed):
     return graph_nx
 
 
-def build_graph_pyg(gene_cell, gene_embed, cell_embed, edge_indexs, ccc_matrix=None):
+def build_graph_pyg(gene_cell, gene_embed, cell_embed, edge_indexs):
     print('Building PyG graph')
     y = [True] * gene_cell.shape[0] + [False] * gene_cell.shape[1]
     y = torch.tensor(y)
@@ -461,32 +460,8 @@ def build_graph_pyg(gene_cell, gene_embed, cell_embed, edge_indexs, ccc_matrix=N
     x = torch.cat([gene_embed, cell_embed]).detach()
     print('node feature: ', x.shape)
 
-    if ccc_matrix is None:
-        print('Building PyG graph without edge weights (binary edges).')
-        edge_index = to_undirected(edge_indexs)
-        graph_pyg = Graphdata(x=x, edge_index=edge_index, y=y)
-    else:
-        print('Building PyG graph with continuous edge weights (edge_dim=1).')
-        flatten_edge_features = ccc_matrix[ccc_matrix != 0]
-        min_val = np.min(flatten_edge_features)
-        max_val = np.max(flatten_edge_features)
-        if max_val > min_val:
-            normalized = (flatten_edge_features - min_val) / (max_val - min_val)
-        else:
-            normalized = np.zeros_like(flatten_edge_features)
-        # Cell-gene edges receive weight 1.0 by convention; CCC edges receive
-        # the normalized L-R probability.
-        edge_attr = np.concatenate([
-            np.ones(edge_indexs.shape[1] - len(normalized)),
-            normalized
-        ])
-        undirected_edge_index, undirected_edge_attr = to_undirected(
-            edge_indexs,
-            edge_attr=torch.tensor(edge_attr, dtype=torch.float32),
-            reduce='mean'
-        )
-        graph_pyg = Graphdata(x=x, edge_index=undirected_edge_index,
-                              edge_attr=undirected_edge_attr, y=y)
+    edge_index = to_undirected(edge_indexs)
+    graph_pyg = Graphdata(x=x, edge_index=edge_index, y=y)
 
     print('Pyg graph:', graph_pyg)
     print('graph.is_directed():', graph_pyg.is_directed())
@@ -496,62 +471,44 @@ def build_graph_pyg(gene_cell, gene_embed, cell_embed, edge_indexs, ccc_matrix=N
 # ============================================================================
 #                       L-R PROBABILITY (SoptSC-adapted)
 # ============================================================================
-def build_ccc_matrix(expression_matrix, gene_names, lr_panel_path=None):
-    """Adapted from SoptSC's L-R probability term (Wang et al. 2019).
-
-    DeepSAS uses ONLY the L-R-expression term, not the SoptSC target-gene
-    weighting (see Methods 1.2 in the revised manuscript for rationale).
-    """
+def build_ccc_matrix(expression_matrix, gene_names, lr_panel_path):
+    """Average per-pair L-R probabilities as defined in Methods Section 1.2."""
     ligand_receptor_dict = get_ccc_markers(lr_panel_path)[0]
     ccc_matrix = None
+    pair_count = 0
     for ligand, receptors in ligand_receptor_dict.items():
         if ligand not in gene_names:
             continue
         ligand_exp = expression_matrix[:, gene_names.index(ligand)].reshape(-1, 1)
         receptor_indexs = [gene_names.index(r) for r in receptors if r in gene_names]
-        if not receptor_indexs:
-            continue
-        receptor_exp = expression_matrix[:, receptor_indexs]
-        receptor_exp = np.sum(receptor_exp, axis=1).reshape(1, -1)
-        result = ligand_exp * receptor_exp
-        ccc_matrix = result if ccc_matrix is None else ccc_matrix + result
+        for receptor_index in receptor_indexs:
+            receptor_exp = expression_matrix[:, receptor_index].reshape(1, -1)
+            pair_score = ligand_exp * receptor_exp
+            masked = ma.masked_where(pair_score == 0, pair_score)
+            pair_score = np.exp(-1 / masked).filled(0)
+            ccc_matrix = (pair_score if ccc_matrix is None
+                          else ccc_matrix + pair_score)
+            pair_count += 1
+    if pair_count:
+        ccc_matrix = ccc_matrix / pair_count
     return ccc_matrix
 
 
-def convert_to_adj(ccc_matrix, threshold=0.8):
-    masked_result = ma.masked_where(ccc_matrix == 0, ccc_matrix)
-    transformed = np.exp(-1 / masked_result).filled(0)
-    symmetric = 0.5 * (transformed + transformed.T)
+def convert_to_adj(ccc_matrix, threshold):
+    symmetric = 0.5 * (ccc_matrix + ccc_matrix.T)
     mask = symmetric >= threshold
     return np.where(mask, symmetric, 0)
 
 
-@jit(nopython=True)
-def compute_adj_matrix(ccc_matrix, w=1.0, b=0.0):
-    n = ccc_matrix.shape[0]
-    adj_matrix = np.zeros((n, n))
-    for i in range(n):
-        for j in range(n):
-            diff_norm = np.linalg.norm(ccc_matrix[i] - ccc_matrix[j])
-            adj_matrix[i, j] = 1 / (1 + np.exp(w * diff_norm ** 2 + b))
-    return adj_matrix
-
-
-def convert_to_adj_v2(ccc_matrix, t=0.8):
-    adj_matrix = compute_adj_matrix(ccc_matrix)
-    return np.where(adj_matrix >= t, adj_matrix, 0)
-
-
-def build_ccc_graph(gene_cell, gene_names, lr_panel_path=None, threshold=0.8):
+def build_ccc_graph(gene_cell, gene_names, lr_panel_path, threshold):
     """gene_cell is (gene x cell). Internally transposed to (cell x gene)."""
     ccc_matrix = build_ccc_matrix(gene_cell.T, gene_names, lr_panel_path)
     if ccc_matrix is None:
         # Edge case: none of the L-R genes found in the dataset
         n = gene_cell.shape[1]
-        return np.zeros((n, n)), np.zeros((n, n))
+        return np.zeros((n, n))
     adj_matrix = convert_to_adj(ccc_matrix, threshold)
-    ccc_matrix = ccc_matrix * adj_matrix
-    return adj_matrix, ccc_matrix
+    return adj_matrix
 
 
 # ============================================================================

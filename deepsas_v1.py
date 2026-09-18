@@ -6,14 +6,17 @@ import os
 import random
 import time
 
+# Required by deterministic CuBLAS operations on CUDA 10.2 and newer. This
+# must be configured before PyTorch initializes CUDA.
+os.environ.setdefault('CUBLAS_WORKSPACE_CONFIG', ':4096:8')
+
 import numpy as np
 import scanpy as sp
 import torch
 from torch.optim.lr_scheduler import ExponentialLR
 
 import utils
-from model_AE import reduction_AE
-from model_GAT import GAEModel
+from model_GAT import GAEModel, require_projection_mode
 from model_Sencell import Sencell, cell_optim
 from refinement import (candidate_convergence, mean_attention_by_target,
                         update_gene_candidates)
@@ -25,6 +28,9 @@ from refinement import (candidate_convergence, mean_attention_by_target,
 args = utils.parse_args()
 print(vars(args))
 run_config = vars(args).copy()
+run_config['gat_architecture'] = (
+    'type-specific-projections-v1' if args.type_specific_projections
+    else 'shared-projection-v1')
 args.output_dir = os.path.join(args.output_dir, args.exp_name)
 print("Outputs dir:", args.output_dir)
 os.makedirs(args.output_dir, exist_ok=True)
@@ -37,6 +43,7 @@ seed = args.seed
 torch.manual_seed(seed)
 torch.cuda.manual_seed(seed)
 torch.cuda.manual_seed_all(seed)
+torch.use_deterministic_algorithms(True)
 np.random.seed(seed)
 random.seed(seed)
 os.environ['PYTHONHASHSEED'] = str(seed)
@@ -73,7 +80,7 @@ args.cell_num = gene_cell.shape[1]
 print(f'cell num: {new_data.shape[0]}, gene num: {new_data.shape[1]}')
 
 if args.retrain:
-    graph_nx, edge_indexs, ccc_matrix = utils.build_graph_nx(
+    graph_nx, edge_indexs = utils.build_graph_nx(
         new_data, gene_cell, cell_cluster_arr, sen_gene_ls,
         nonsen_gene_ls, gene_names, args)
 logger.info("Part 1 done.")
@@ -124,8 +131,8 @@ if args.retrain:
     cell_embed = torch.tensor(cell_embed)
     gene_embed = torch.tensor(gene_embed)
     graph_nx = utils.add_nx_embedding(graph_nx, gene_embed, cell_embed)
-    graph_pyg = utils.build_graph_pyg(gene_cell, gene_embed, cell_embed,
-                                          edge_indexs, ccc_matrix)
+    graph_pyg = utils.build_graph_pyg(
+        gene_cell, gene_embed, cell_embed, edge_indexs)
     torch.save(graph_nx, os.path.join(args.output_dir, f'{args.exp_name}_graphnx.data'))
     torch.save(graph_pyg, os.path.join(args.output_dir, f'{args.exp_name}_graphpyg.data'))
     print('graph_nx and graph_pyg saved.')
@@ -143,23 +150,17 @@ logger.info("====== Part 3: GAT training ======")
 data = graph_pyg.to(device)
 torch.cuda.empty_cache()
 
-# Methods 1.2 uses binary connectivity. There is no independent edge feature
-# vector; phi affects which CCC edges exist, rather than their GAT edge_dim.
-edge_dim = None
-
 if args.retrain:
-    model = GAEModel(args.emb_size, args.emb_size, edge_dim=edge_dim,
+    model = GAEModel(args.emb_size, args.emb_size,
                      hidden_size=args.gat_hidden_size,
-                     dropout=args.gat_dropout).to(device)
+                     dropout=args.gat_dropout,
+                     type_specific_projections=args.type_specific_projections).to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=args.gat_learning_rate)
 
     def train():
         model.train()
         optimizer.zero_grad()
-        if model.use_edge_attr:
-            z = model.encode(data.x, data.edge_index, edge_attr=data.edge_attr)
-        else:
-            z = model.encode(data.x, data.edge_index)
+        z = model.encode(data.x, data.edge_index, data.y)
         loss = model.recon_loss(z, data.edge_index)
         loss.backward()
         optimizer.step()
@@ -179,6 +180,7 @@ else:
     GAT_path = os.path.join(args.output_dir, f'{args.exp_name}_GAT.pt')
     print(f'Loading GAT from {GAT_path}')
     model = torch.load(GAT_path).to(device)
+    require_projection_mode(model, args.type_specific_projections)
 torch.cuda.empty_cache()
 logger.info("Part 3 done.")
 
@@ -211,12 +213,14 @@ def build_cell_dict(gene_cell, predicted_cell_indexs, GAT_embeddings, graph_nx):
 
 
 def identify_sengene_v1(sencell_dict, gene_cell, edge_index_selfloop,
-                        attention_scores, sen_gene_ls, iqr_multiplier=1.5):
+                        attention_scores, sen_gene_ls, iqr_multiplier,
+                        update_mode):
     scores, _ = mean_attention_by_target(
         edge_index_selfloop, attention_scores, sencell_dict.keys(),
         gene_cell.shape[0] + gene_cell.shape[1])
     updated, diagnostics = update_gene_candidates(
-        scores[:gene_cell.shape[0]].numpy(), sen_gene_ls, iqr_multiplier)
+        scores[:gene_cell.shape[0]].numpy(), sen_gene_ls, iqr_multiplier,
+        update_mode)
     return torch.as_tensor(updated, dtype=torch.long), diagnostics
 
 
@@ -234,7 +238,7 @@ def generate_ct_specific_scores(sen_gene_ls, gene_cell, edge_index_selfloop,
     return ct_specific_scores
 
 
-def calculate_outliers_v1(scores_index, iqr_multiplier=1.5):
+def calculate_outliers_v1(scores_index, iqr_multiplier):
     if len(scores_index) == 0:
         return 0, [], []
     arr = np.array(scores_index)
@@ -251,7 +255,7 @@ def calculate_outliers_v1(scores_index, iqr_multiplier=1.5):
     return len(snc_index), snc_index, outliers
 
 
-def extract_cell_indexs(ct_specific_scores, iqr_multiplier=1.5, min_snc_per_type=10):
+def extract_cell_indexs(ct_specific_scores, iqr_multiplier, min_snc_per_type):
     snc_indexs = []
     for key, values in ct_specific_scores.items():
         arr = np.array(values)
@@ -265,7 +269,8 @@ def extract_cell_indexs(ct_specific_scores, iqr_multiplier=1.5, min_snc_per_type
 
 
 # --- model + optimizer setup ---
-cellmodel = Sencell(args.emb_size).to(device)
+cellmodel = Sencell(
+    args.emb_size, args.cell_hidden_size, args.distance_levels).to(device)
 data = data.to(device)
 optimizer = torch.optim.Adam(cellmodel.parameters(),
                              lr=args.learning_rate, weight_decay=args.weight_decay)
@@ -278,10 +283,11 @@ model.eval()
 initial_features = data.x.detach().clone()
 with torch.no_grad():
     edge_index_selfloop_cell, attention_scores_cell = model.get_attention_scores(data)
-    # Retain the pretrained embeddings (Methods 1.4). Re-encoding data.x after
+    # Candidate scoring uses attention from the final GAT layer (Methods 1.4).
+    # Retain the pretrained embeddings. Re-encoding data.x after
     # replacing it with optimized embeddings would feed the frozen encoder's
     # output back into itself and move gene features at every iteration.
-    GAT_embeddings = model.encode(data.x, data.edge_index).detach()
+    GAT_embeddings = model.encode(data.x, data.edge_index, data.y).detach()
 attention_scores_cell = attention_scores_cell.cpu().detach()
 edge_index_selfloop_cell = edge_index_selfloop_cell.cpu().detach()
 
@@ -289,7 +295,8 @@ edge_index_selfloop_cell = edge_index_selfloop_cell.cpu().detach()
 convergence_log_path = os.path.join(
     args.output_dir, f'{args.exp_name}_convergence.csv')
 log_fields = ['iter', 'snc_count', 'sng_count', 'jaccard_snc', 'jaccard_sng',
-              'converged', 'status', 'cell_loss', 'gene_threshold',
+              'converged', 'status', 'cell_loss', 'sng_update_mode',
+              'gene_threshold',
               'sng_outlier_count', 'sng_swaps', 'sng_added', 'sng_removed',
               'snc_counts_by_type', 'elapsed_seconds']
 with open(convergence_log_path, 'w', newline='') as f:
@@ -317,8 +324,7 @@ for epoch in range(args.max_iter):
     if sencell_dict and len(sen_gene_ls):
         # ---- contrastive optimization of cell embeddings ----
         cellmodel, sencell_dict, nonsencell_dict = cell_optim(
-            cellmodel, optimizer, sencell_dict, nonsencell_dict, None,
-            args, train=True)
+            cellmodel, optimizer, sencell_dict, nonsencell_dict, args)
         cell_loss = cellmodel.last_loss
         scheduler.step()
         print('current lr:', optimizer.param_groups[0]['lr'])
@@ -336,10 +342,11 @@ for epoch in range(args.max_iter):
         attention_scores = attention_scores.detach().cpu()
         edge_index_selfloop = edge_index_selfloop.detach().cpu()
 
-        # ---- threshold-driven, strictly improving gene replacements ----
+        # ---- configured IQR-driven or fixed-count gene replacements ----
         new_sen_gene_ls, gene_diagnostics = identify_sengene_v1(
             sencell_dict, gene_cell, edge_index_selfloop,
-            attention_scores, sen_gene_ls, args.iqr_multiplier)
+            attention_scores, sen_gene_ls, args.iqr_multiplier,
+            args.sng_update_mode)
 
         # Save and compare complete iteration states: cell labels are selected
         # using the same updated attention and genes that are exported below.
@@ -378,6 +385,7 @@ for epoch in range(args.max_iter):
                jaccard_snc=jacc_cell if np.isfinite(jacc_cell) else '',
                jaccard_sng=jacc_gene if np.isfinite(jacc_gene) else '',
                converged=converged, status=status, cell_loss=cell_loss,
+               sng_update_mode=args.sng_update_mode,
                snc_counts_by_type=json.dumps(counts_by_type), elapsed_seconds=elapsed,
                **gene_diagnostics)
     row['sng_added'] = json.dumps(row['sng_added'])

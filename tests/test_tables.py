@@ -23,6 +23,33 @@ def example_data(cell_types):
     )
 
 
+class CCCFormulaTests(unittest.TestCase):
+    def test_pair_probabilities_are_averaged_before_thresholding(self):
+        expression_product = 1 / (2 * -np.log(0.8))
+        gene_cell = np.asarray([
+            [expression_product, expression_product],
+            [1., 1.],
+            [1., 1.],
+        ])
+        panel = ({'L': ['R1', 'R2']}, {'L', 'R1', 'R2'})
+        with patch.object(tables.utils, 'get_ccc_markers', return_value=panel):
+            scores = tables.utils.build_ccc_matrix(
+                gene_cell.T, ['L', 'R1', 'R2'], None)
+            graph = tables.utils.build_ccc_graph(
+                gene_cell, ['L', 'R1', 'R2'], None, 0.75)
+
+        np.testing.assert_allclose(scores, 0.64)
+        self.assertTrue(np.all(graph == 0))
+
+    def test_no_available_lr_pair_produces_empty_graph(self):
+        panel = ({'missing_ligand': ['missing_receptor']},
+                 {'missing_ligand', 'missing_receptor'})
+        with patch.object(tables.utils, 'get_ccc_markers', return_value=panel):
+            graph = tables.utils.build_ccc_graph(
+                np.ones((2, 3)), ['A', 'B'], None, 0.8)
+        np.testing.assert_array_equal(graph, np.zeros((3, 3)))
+
+
 class TableRegressionTests(unittest.TestCase):
     def test_zero_single_and_multiple_selected_edges(self):
         gene_cell = np.zeros((2, 3))
