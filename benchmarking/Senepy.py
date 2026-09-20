@@ -73,7 +73,7 @@ adata_oligo = adata_oligo[adata_oligo.obs["braak"].isin(['0', '6'])].copy()
 ######p16 bladder GSE253338
 
 
-adata=sc.read_h5ad('/fs/ess/PAS1475/Ahmed/DeepSAS/Benchmark/GSE253338/adata_P16_muscle.h5ad')
+adata=sc.read_h5ad('/fs/ess/PAS1475/Ahmed/DeepSAS/Benchmark/GSE253338/adata_P16_blader.h5ad')
 
 hubs= sp.load_hubs(species='Mouse',sig_type='cell_type')
 translator = sp.translator(hub = hubs.hubs, data = adata)
@@ -85,6 +85,6 @@ merge_results = hubs.merge_hubs(hubs.metadata, new_name = 'Universal',
 adata.obs['senpey'] = sp.score_hub(adata, hubs.hubs['Universal'],translator=translator,binarize=False)
 
 adata_sub = adata[
-    adata.obs["integrated_snn_res.0.1"].isin(["0","3"])#"0","3" fibroblast,!1 is the basal cells xoxox
+    adata.obs["integrated_snn_res.0.1"].isin(["0","3"])#"0","3" fibroblast,!1 is the basal cells 
 ].copy()
 
