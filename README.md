@@ -263,7 +263,7 @@ altogether.
 
 For non-human data, either map the expression matrix to the species of the
 marker list (Ensembl BioMart, pyensembl, babelgene) before running DeepSAS, or
-supply a senescence hallmark gene list for that species:
+supply a senescence hallmark gene list for that species (this is an example input):
 
 ```bash
 uv run python -u deepsas_v1.py --exp_name mouse_run \
