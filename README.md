@@ -149,6 +149,13 @@ DeepSAS works with h5ad format (AnnData objects from Scanpy). The input data sho
 
 The input expression data should be normalized counts (not log-transformed). DeepSAS handles normalization and scaling using scanpy functions. Batch correction is optional and enabled with `--batch_remove`.
 
+`adata.var_names` must hold gene symbols in the same nomenclature as the
+senescence marker list. The bundled list uses human HGNC symbols (`CDKN1A`);
+mouse and rat data use MGI/RGD symbols (`Cdkn1a`) and match almost nothing in
+it. DeepSAS therefore checks the marker overlap immediately after loading the
+data and stops with an explicit message rather than training on an empty
+senescence seed; see [Senescence Marker List and Species](#senescence-marker-list-and-species).
+
 ## Parameters
 
 Run `uv run python deepsas_v1.py --help` for the full command-line interface. The following settings are used by `deepsas_v1.py`.
@@ -185,7 +192,7 @@ the new options therefore preserves the previous computation.
 | -------------------------------------------------------------------- | -------------- | ------------------------------------------------------------------------------------------------- |
 | `--seed`                                                           | `40`         | Random seed, including PCA and UMAP                                                               |
 | `--n_genes`                                                        | `full`       | All retained genes, or a requested number of highly variable genes plus available marker genes    |
-| `--gene_set`                                                       | `full`       | Initial senescence marker lists; alternatives include`senmayo`, `fridman`, and `cellage`    |
+| `--gene_set`                                                       | `full`       | Gene sets taken from the marker list; a column name of that file, or several joined with`+` |
 | `--emb_size`                                                       | `12`         | Cell and gene embedding dimension                                                                 |
 | `--type_specific_projections` / `--no_type_specific_projections` | enabled        | Use separate gene/cell input projections by default, or explicitly select a shared GAT projection |
 | `--ccc`                                                            | `type1`      | Binary CCC edges;`type3` omits CCC edges                                                        |
@@ -198,6 +205,78 @@ The graph uses binary connectivity: cell–gene expression presence and threshol
 11-gene legacy cell-cycle marker seed from DeepSAS v1. The named alternatives
 select only the marker collections stated in their option value. The built-in
 L–R panel is the eight-ligand SASP panel from Supplementary Table S19.
+
+### Senescence Marker List and Species
+
+| Parameter                |     Default | Role and valid range                                                                     |
+| ------------------------ | ----------: | ---------------------------------------------------------------------------------------- |
+| `--marker_list`        | bundled CSV | Senescence marker CSV that seeds the initial SnG candidates                              |
+| `--species`            |   `human` | Species of the input data:`human`, `mouse`, `rat`, or `other`                      |
+| `--min_marker_overlap` |    `0.05` | Fraction of marker genes that must be present in the data; number in [0, 1]              |
+| `--skip_marker_check`  |         off | Report a failing marker/data symbol check as a warning instead of stopping the run       |
+
+**`--marker_list`** takes a CSV with one column per gene set and one gene
+symbol per row, shorter columns padded with empty cells — the layout of the
+bundled `senescence_marker_list.csv`:
+
+```
+SenMayo,FRIDMAN,CellAge,GO
+ACVR1B,ALDH1A3,AAK1,TERF2
+ANG,AOPEP,ABI3,CDK2
+```
+
+Column names are the values accepted by `--gene_set`, matched
+case-insensitively and combined with `+` (for example
+`--gene_set senmayo+cellage`). A name that is not a column of the file is
+rejected with the list of available gene sets. The default file keeps the
+DeepSAS v1 grouping exactly: `GO` is reported but not used for seeding, and
+the 11-gene legacy cell-cycle seed is appended. A user-supplied file is used as
+given — its columns are the gene sets, and nothing is added to them.
+
+**`--species`** declares the species of the input data. Gene symbols are
+species specific — human HGNC symbols are uppercase (`CDKN1A`), mouse and rat
+MGI/RGD symbols are capitalized (`Cdkn1a`) — so a marker list written for one
+species matches almost nothing in another. Right after the data is loaded,
+DeepSAS reports how many marker genes were found and stops when fewer than
+`--min_marker_overlap` of them are present:
+
+```
+Marker genes found in the data: 2/317 (0.6%); required: 5.0%
+	Data gene symbols: Capitalized symbols, e.g. Cdkn1a (mouse/rat MGI style)
+	Marker gene symbols: UPPERCASE symbols, e.g. CDKN1A (human HGNC style)
+Ligand-receptor panel genes found in the data: 1/62 (1.6%)
+WARNING: only 1 of 62 genes of the built-in human ligand-receptor panel (1.6%) are present in the input data, so --ccc type1 will add few or no cell-cell edges. Pass --lr_panel with a panel whose gene symbols match the data (mouse), or --ccc type3 to run without cell-cell edges.
+ValueError: Only 2 of 317 senescence marker genes (0.6%) are present in the input data, which is below --min_marker_overlap (5.0%).
+  --species            : mouse (expects Capitalized symbols, e.g. Cdkn1a (mouse/rat MGI style))
+  data gene symbols    : Capitalized symbols, e.g. Cdkn1a (mouse/rat MGI style), 16547 genes, e.g. Noc2l, Hes4, Isg15, Agrn, C1orf159
+  marker gene symbols  : UPPERCASE symbols, e.g. CDKN1A (human HGNC style), e.g. AAK1, ABI3, ACLY, ACVR1B, ADCK5
+  Ignoring capitalization, 303 marker genes would match, so the two sets differ in nomenclature rather than in content.
+```
+
+The ligand–receptor panel is checked the same way and on the same threshold,
+because it is a second species-specific gene list. A panel that does not match
+the data is only a warning, not an error: it leaves the CCC part of the graph
+without edges instead of making the run meaningless. The warning is printed on
+both paths, so a run that stops on the marker list also states whether the L–R
+panel matches. It is suppressed by `--ccc type3`, which drops cell-cell edges
+altogether.
+
+For non-human data, either map the expression matrix to the species of the
+marker list (Ensembl BioMart, pyensembl, babelgene) before running DeepSAS, or
+supply a senescence hallmark gene list for that species:
+
+```bash
+uv run python -u deepsas_v1.py --exp_name mouse_run \
+    --input_data_count mouse_data.h5ad \
+    --species mouse --marker_list mouse_senescence_markers.csv \
+    --lr_panel mouse_lr_panel.csv --retrain
+```
+
+Capitalization is not converted for you, because case folding is not a valid
+ortholog mapping. With `--species` set to a non-human value the built-in human
+cell-cycle seed is not added either. Both sets of match statistics — marker
+list and L–R panel — are recorded under `marker_match` in
+`{exp_name}_run_summary.json`.
 
 ### Training and Candidate Selection
 
@@ -285,7 +364,7 @@ DeepSAS generates the following files under `{output_dir}/{exp_name}/`:
 - `{exp_name}_sencellgene-epoch{epoch}.data`: Candidate state at each completed outer iteration
 - `{exp_name}_sencellgene-final.data`: Final available candidate state, used by table generation
 - `{exp_name}_convergence.csv`: Per-iteration candidate counts, Jaccard overlaps, loss, gene threshold and replacements, cell-type counts, and stop status
-- `{exp_name}_run_summary.json`: Run configuration, final iteration, candidate counts, final-result filename, and stop status
+- `{exp_name}_run_summary.json`: Run configuration, marker/species match statistics (`marker_match`), final iteration, candidate counts, final-result filename, and stop status
 
 The summary distinguishes `converged` (both nonempty candidate sets meet the overlap criterion), `max_iter` (the cap was reached without convergence), and `empty_candidates` (SnC or SnG candidates are empty). A `running` summary has not recorded a completed run and cannot be used for default final-table generation. Empty candidates are never reported as convergence.
 

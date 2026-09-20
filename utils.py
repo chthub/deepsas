@@ -99,9 +99,12 @@ def parse_args():
     parser.add_argument('--ccc_threshold', type=float, default=0.8,
                         help='CCC score threshold phi for binary cell-cell edges')
     parser.add_argument('--gene_set', type=str, default='full',
-                        help='Senescence gene-set source (full, senmayo, fridman, '
-                             'cellage, senmayo+fridman, senmayo+cellage, '
-                             'senmayo+fridman+cellage)')
+                        help="Senescence gene sets used to seed the SnG "
+                             "candidates: 'full' for every gene set in "
+                             '--marker_list, or one of its column names, '
+                             "matched case-insensitively and combined with '+' "
+                             "(e.g. 'senmayo', 'senmayo+fridman+cellage' for "
+                             'the bundled list)')
     parser.add_argument('--emb_size', type=int, default=12,
                         help='Embedding dimension size')
     projection_group = parser.add_mutually_exclusive_group()
@@ -121,6 +124,30 @@ def parse_args():
                              'columns "ligand" and "receptor" (one row per L-R '
                              'pair). When omitted, the built-in 8-ligand SASP '
                              'panel (Supplementary Table S19) is used.')
+
+    # ---- Senescence marker list and species ----
+    parser.add_argument('--marker_list', type=str, default=None,
+                        help='Path to the senescence marker CSV used to seed the '
+                             'SnG candidates: one column per gene set, one gene '
+                             'symbol per row, shorter columns padded with empty '
+                             'cells. Column names are the values accepted by '
+                             '--gene_set. Default: the bundled human '
+                             'senescence_marker_list.csv.')
+    parser.add_argument('--species', type=str, default='human',
+                        choices=['human', 'mouse', 'rat', 'other'],
+                        help='Species of the input data. The data and the marker '
+                             'list must use the same gene-symbol nomenclature '
+                             '(human HGNC symbols are uppercase, mouse and rat '
+                             'MGI symbols are capitalized); this is checked right '
+                             "after the data is loaded (default: 'human')")
+    parser.add_argument('--min_marker_overlap', type=float, default=0.05,
+                        help='Minimum fraction of marker genes that must be found '
+                             'in the input data. Below this fraction the run stops '
+                             'and asks for ortholog mapping or a species-matched '
+                             '--marker_list (default: 0.05)')
+    parser.add_argument('--skip_marker_check', action='store_true',
+                        help='Report a failing marker/data symbol check as a '
+                             'warning instead of stopping the run')
 
     # ---- Training parameters ----
     parser.add_argument('--gat_epoch', type=int, default=30,
@@ -192,6 +219,8 @@ def parse_args():
         parser.error('--epoch must be nonnegative')
     if not (0 <= args.ccc_threshold <= 1):
         parser.error('--ccc_threshold must be in [0, 1]')
+    if not (0 <= args.min_marker_overlap <= 1):
+        parser.error('--min_marker_overlap must be in [0, 1]')
     if not (0 <= args.gat_dropout < 1):
         parser.error('--gat_dropout must be in [0, 1)')
     if (args.gat_hidden_size < 1 or args.cell_hidden_size < 1
@@ -365,43 +394,266 @@ def get_cellcyle_markers():
     return list(_BUILTIN_CELL_CYCLE_MARKERS)
 
 
-def load_markers(args):
-    markers = pd.read_csv('senescence_marker_list.csv')
-    markers_ls = []
-    for col_name, data in markers.items():
-        markers_ls.append(list(data[data.notnull()]))
+# Bundled human marker table. A user-supplied CSV that carries these columns
+# keeps the original v1 grouping: GO is reported but not used for seeding, and
+# the legacy cell-cycle seed above is appended.
+BUILTIN_MARKER_FILE = 'senescence_marker_list.csv'
+_BUILTIN_MARKER_COLUMNS = ('SenMayo', 'FRIDMAN', 'CellAge', 'GO')
+_BUILTIN_SEED_COLUMNS = ('SenMayo', 'FRIDMAN', 'CellAge')
+_CELL_CYCLE_GROUP_NAME = 'Cell-cycle markers'
 
-    lr_panel_path = getattr(args, 'lr_panel', None)
-    markers5 = list(get_ccc_markers(lr_panel_path)[1])
-    markers_ls.append(markers5)
-    markers6 = get_cellcyle_markers()
-    markers_ls.append(markers6)
+
+def resolve_marker_list_path(path=None):
+    """Resolve the senescence marker CSV.
+
+    ``None`` selects the bundled human list: the copy in the working directory
+    when there is one, otherwise the copy shipped next to this module, so the
+    pipeline can also be started from another directory.
+    """
+    if path is not None:
+        if not os.path.exists(path):
+            raise FileNotFoundError(
+                f'Senescence marker list CSV not found: {path}. '
+                'Pass --marker_list <path> with a readable CSV.')
+        return path
+    if os.path.exists(BUILTIN_MARKER_FILE):
+        return BUILTIN_MARKER_FILE
+    return os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                        BUILTIN_MARKER_FILE)
+
+
+def read_marker_list(path):
+    """Read a marker CSV into an ordered ``{gene-set name: [genes]}`` mapping.
+
+    One column per gene set, one gene symbol per row, shorter columns padded
+    with empty cells. Duplicates and blank cells are dropped.
+    """
+    table = pd.read_csv(path)
+    groups = {}
+    for col_name, column in table.items():
+        genes = [str(g).strip() for g in column[column.notnull()]]
+        genes = [g for g in genes if g]
+        if not genes:
+            continue
+        groups[str(col_name).strip()] = list(dict.fromkeys(genes))
+    if not groups:
+        raise ValueError(
+            f'No marker genes found in {path}. The file must be a CSV with one '
+            'column per gene set and one gene symbol per row.')
+    return groups
+
+
+def load_markers(args):
+    """Return the marker gene sets that seed the initial SnG candidates."""
+    path = resolve_marker_list_path(getattr(args, 'marker_list', None))
+    groups = read_marker_list(path)
+    species = getattr(args, 'species', 'human')
+    print(f'Senescence marker list: {path} (species: {species})')
+
+    if set(_BUILTIN_MARKER_COLUMNS).issubset(groups):
+        # Bundled layout: GO is not used for seeding, and the legacy human
+        # cell-cycle seed of DeepSAS v1 is appended.
+        groups = {name: groups[name] for name in _BUILTIN_SEED_COLUMNS}
+        if species == 'human':
+            groups[_CELL_CYCLE_GROUP_NAME] = get_cellcyle_markers()
+        else:
+            print(f'Species is {species}: the built-in human cell-cycle marker '
+                  'seed is not added. Include the orthologs in --marker_list if '
+                  'they are wanted.')
+
+    sel = getattr(args, 'gene_set', 'full')
+    if sel != 'full':
+        available = {name.lower(): name for name in groups}
+        selected = {}
+        for wanted in str(sel).split('+'):
+            name = available.get(wanted.strip().lower())
+            if name is None:
+                raise ValueError(
+                    f'--gene_set {sel!r} requests the gene set {wanted.strip()!r}, '
+                    f'which is not a column of {path}. Available gene sets: '
+                    f"full, {', '.join(groups)} (combine several with '+').")
+            selected[name] = groups[name]
+        groups = selected
 
     print('Number of genes in each marker list:')
-    print(tabulate([
-        ['SenMayo', 'FRIDMAN', 'CellAge', 'Cell-cycle markers'],
-        [len(markers_ls[0]), len(markers_ls[1]), len(markers_ls[2]), len(markers_ls[5])]
-    ], headers='firstrow'))
+    print(tabulate([list(groups), [len(genes) for genes in groups.values()]],
+                   headers='firstrow'))
+    return [list(genes) for genes in groups.values()]
 
-    # Drop GO and L-R markers from the active set used for senescence-gene seeding
-    markers_ls = [markers_ls[0], markers_ls[1], markers_ls[2], markers_ls[5]]
 
-    sel = args.gene_set
-    if sel == 'full':
-        return markers_ls
-    if sel == 'senmayo':
-        return [markers_ls[0]]
-    if sel == 'fridman':
-        return [markers_ls[1]]
-    if sel == 'cellage':
-        return [markers_ls[2]]
-    if sel == 'senmayo+cellage':
-        return [markers_ls[0], markers_ls[2]]
-    if sel == 'senmayo+fridman':
-        return [markers_ls[0], markers_ls[1]]
-    if sel == 'senmayo+fridman+cellage':
-        return [markers_ls[0], markers_ls[1], markers_ls[2]]
-    return markers_ls
+# ============================================================================
+#                      SPECIES / GENE-SYMBOL COMPATIBILITY
+# ============================================================================
+# Gene symbols are species specific: human HGNC symbols are uppercase
+# (CDKN1A), mouse and rat MGI/RGD symbols are capitalized (Cdkn1a). A marker
+# list written for one species matches almost nothing in data from another, so
+# the run is stopped as soon as the data is loaded instead of collapsing to an
+# empty senescence seed much later.
+_SPECIES_SYMBOL_STYLE = {
+    'human': 'upper',
+    'mouse': 'title',
+    'rat': 'title',
+    'other': None,
+}
+
+_STYLE_LABEL = {
+    'upper': 'UPPERCASE symbols, e.g. CDKN1A (human HGNC style)',
+    'title': 'Capitalized symbols, e.g. Cdkn1a (mouse/rat MGI style)',
+    'lower': 'lowercase symbols, e.g. cdkn1a',
+    'mixed': 'no dominant capitalization convention',
+}
+
+
+def _symbol_style(symbol):
+    letters = [c for c in str(symbol) if c.isalpha()]
+    if not letters:
+        return 'mixed'
+    if all(c.isupper() for c in letters):
+        return 'upper'
+    if all(c.islower() for c in letters):
+        return 'lower'
+    if letters[0].isupper() and all(c.islower() for c in letters[1:]):
+        return 'title'
+    return 'mixed'
+
+
+def _dominant_symbol_style(symbols, min_fraction=0.6):
+    """Most common capitalization style, or 'mixed' when none dominates."""
+    counts = {}
+    for symbol in symbols:
+        style = _symbol_style(symbol)
+        counts[style] = counts.get(style, 0) + 1
+    if not counts:
+        return 'mixed'
+    style, count = max(counts.items(), key=lambda item: item[1])
+    if count < min_fraction * sum(counts.values()):
+        return 'mixed'
+    return style
+
+
+def check_lr_panel_match(data_symbols, args):
+    """Report how much of the ligand-receptor panel is present in the data.
+
+    Ligand-receptor symbols are species specific just like the marker list, so
+    a human panel used on mouse data yields no CCC edges at all. This is a
+    warning rather than an error, because cell-cell edges are optional.
+    """
+    lr_panel_path = getattr(args, 'lr_panel', None)
+    species = getattr(args, 'species', 'human')
+    min_overlap = float(getattr(args, 'min_marker_overlap', 0.05))
+    data_set = set(data_symbols)
+    lr_genes = sorted(get_ccc_markers(lr_panel_path)[1])
+    matched = [gene for gene in lr_genes if gene in data_set]
+    overlap = len(matched) / len(lr_genes) if lr_genes else 0.
+    uses_ccc = getattr(args, 'ccc', 'type1') != 'type3'
+
+    print(f'Ligand-receptor panel genes found in the data: {len(matched)}/'
+          f'{len(lr_genes)} ({overlap:.1%})')
+    if uses_ccc and overlap < min_overlap:
+        panel = ('the built-in human ligand-receptor panel'
+                 if lr_panel_path is None else f'the panel in {lr_panel_path}')
+        print(f'WARNING: only {len(matched)} of {len(lr_genes)} genes of {panel} '
+              f'({overlap:.1%}) are present in the input data, so --ccc '
+              f'{getattr(args, "ccc", "type1")} will add few or no cell-cell '
+              f'edges. Pass --lr_panel with a panel whose gene symbols match '
+              f'the data ({species}), or --ccc type3 to run without cell-cell '
+              'edges.')
+    return {
+        'lr_panel': lr_panel_path,
+        'lr_panel_genes': len(lr_genes),
+        'lr_matched_genes': len(matched),
+        'lr_matched_fraction': overlap,
+    }
+
+
+def check_species_gene_match(adata, markers_ls, args):
+    """Verify that the data and the marker list use the same gene symbols.
+
+    Returns a dict of match statistics. Raises ``ValueError`` when fewer than
+    ``--min_marker_overlap`` of the marker genes are present in the data,
+    unless ``--skip_marker_check`` downgrades the failure to a warning.
+    """
+    species = getattr(args, 'species', 'human')
+    min_overlap = float(getattr(args, 'min_marker_overlap', 0.05))
+    marker_symbols = sorted({str(g) for group in markers_ls for g in group})
+    if not marker_symbols:
+        raise ValueError('The senescence marker list contains no genes.')
+
+    data_symbols = [str(g) for g in adata.var_names]
+    data_set = set(data_symbols)
+    matched = [g for g in marker_symbols if g in data_set]
+    overlap = len(matched) / len(marker_symbols)
+
+    data_upper = {g.upper() for g in data_set}
+    matched_ignoring_case = [g for g in marker_symbols if g.upper() in data_upper]
+
+    data_style = _dominant_symbol_style(data_symbols)
+    marker_style = _dominant_symbol_style(marker_symbols)
+    expected_style = _SPECIES_SYMBOL_STYLE.get(species)
+
+    print(f'Marker genes found in the data: {len(matched)}/{len(marker_symbols)} '
+          f'({overlap:.1%}); required: {min_overlap:.1%}')
+    print(f'\tData gene symbols: {_STYLE_LABEL[data_style]}')
+    print(f'\tMarker gene symbols: {_STYLE_LABEL[marker_style]}')
+
+    stats = {
+        'species': species,
+        'marker_genes': len(marker_symbols),
+        'matched_genes': len(matched),
+        'matched_fraction': overlap,
+        'matched_ignoring_case': len(matched_ignoring_case),
+        'data_symbol_style': data_style,
+        'marker_symbol_style': marker_style,
+    }
+    # The L-R panel is a second species-specific gene list, so it is reported
+    # here as well: a panel that does not match the data leaves the CCC part of
+    # the graph empty without stopping the run.
+    stats.update(check_lr_panel_match(data_set, args))
+
+    if overlap >= min_overlap:
+        if expected_style is not None and data_style != expected_style:
+            print(f'WARNING: --species {species} expects '
+                  f'{_STYLE_LABEL[expected_style]}, but the data uses '
+                  f'{_STYLE_LABEL[data_style]}. Check that --species is correct.')
+        return stats
+
+    lines = [
+        f'Only {len(matched)} of {len(marker_symbols)} senescence marker genes '
+        f'({overlap:.1%}) are present in the input data, which is below '
+        f'--min_marker_overlap ({min_overlap:.1%}).',
+        f'  --species            : {species}'
+        + (f' (expects {_STYLE_LABEL[expected_style]})'
+           if expected_style is not None else ''),
+        f'  data gene symbols    : {_STYLE_LABEL[data_style]}, '
+        f'{len(data_set)} genes, e.g. {", ".join(data_symbols[:5])}',
+        f'  marker gene symbols  : {_STYLE_LABEL[marker_style]}, '
+        f'e.g. {", ".join(marker_symbols[:5])}',
+    ]
+    if len(matched_ignoring_case) > len(matched):
+        lines.append(
+            f'  Ignoring capitalization, {len(matched_ignoring_case)} marker '
+            'genes would match, so the two sets differ in nomenclature rather '
+            'than in content. DeepSAS does not rename genes for you, because '
+            'capitalization alone is not a valid ortholog mapping.')
+    lines += [
+        'How to proceed:',
+        '  1. Map the data to the species of the marker list (for example with '
+        'Ensembl BioMart, pyensembl or babelgene) and rerun with the mapped '
+        'symbols; or',
+        '  2. Pass --marker_list <csv> with a senescence hallmark gene list for '
+        'this species (one column per gene set, one gene symbol per row), '
+        'together with --species and, for cell-cell edges, --lr_panel; or',
+        '  3. Pass --skip_marker_check to continue anyway; the senescence seed '
+        'will then be nearly empty and the run is expected to return no SnCs.',
+    ]
+    message = '\n'.join(lines)
+
+    if getattr(args, 'skip_marker_check', False):
+        print('WARNING: --skip_marker_check is set; continuing despite the '
+              'marker/data mismatch.')
+        print(message)
+        return stats
+    raise ValueError(message)
 
 
 # ============================================================================
@@ -474,8 +726,9 @@ def combine_genes(adata, markers_ls, args):
     return new_data, markers_index, sen_gene_ls, nonsen_gene_ls, gene_names
 
 
-def process_data(adata, cluster_cell_ls, cell_cluster_arr, args):
-    markers_ls = load_markers(args)
+def process_data(adata, cluster_cell_ls, cell_cluster_arr, args, markers_ls=None):
+    if markers_ls is None:
+        markers_ls = load_markers(args)
     return combine_genes(adata, markers_ls, args)
 
 

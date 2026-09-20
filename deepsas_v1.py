@@ -77,6 +77,10 @@ else:
             min_genes_per_cell=args.min_genes_per_cell,
             min_cells_per_gene=args.min_cells_per_gene)
 
+markers_ls = utils.load_markers(args)
+run_summary['marker_match'] = utils.check_species_gene_match(
+    adata, markers_ls, args)
+
 if args.phenotype_aware:
     if args.phenotype_col not in adata.obs.columns:
         raise KeyError(
@@ -101,7 +105,7 @@ if args.phenotype_aware:
             selected_genes.update(
                 adata_ct.var_names[adata_ct.var['highly_variable']])
         selected_genes.update(
-            gene for marker_group in utils.load_markers(args)
+            gene for marker_group in markers_ls
             for gene in marker_group if gene in adata.var_names)
         selected_genes.update(
             gene for gene in utils.get_ccc_markers(args.lr_panel)[1]
@@ -114,7 +118,8 @@ if args.phenotype_aware:
         logger.info('Phenotype HVG union retained %d genes.', adata.n_vars)
 
 new_data, markers_index, sen_gene_ls, nonsen_gene_ls, gene_names = \
-    utils.process_data(adata, cluster_cell_ls, cell_cluster_arr, args)
+    utils.process_data(adata, cluster_cell_ls, cell_cluster_arr, args,
+                       markers_ls=markers_ls)
 new_data.write_h5ad(os.path.join(args.output_dir, f'{args.exp_name}_new_data.h5ad'))
 run_summary['initial_sng_indices'] = list(sen_gene_ls)
 
