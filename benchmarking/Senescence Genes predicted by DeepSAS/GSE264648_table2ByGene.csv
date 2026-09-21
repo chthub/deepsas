@@ -1,0 +1,181 @@
+gene,cell_type_count,cell_types
+ABCB1,4,"['Inh', 'Astro', 'OPC', 'Micro']"
+AC009403.1,1,['Oligo']
+AC011504.1,1,['Oligo']
+AC068413.1,1,['Oligo']
+AC108704.2,2,"['OPC', 'Micro']"
+AC127537.1,1,['Inh']
+AC146507.2,1,['OPC']
+AL589678.1,1,['Inh']
+AL589743.4,1,['Exc']
+ANGPTL4,2,"['Exc', 'Inh']"
+APOBEC3F,1,['Astro']
+ARG2,1,['Astro']
+ASPG,1,['Exc']
+ATRAID,1,['Inh']
+AXL,2,"['Exc', 'Inh']"
+BCL2L2,1,['Inh']
+BEX3,1,['OPC']
+BHLHE40,2,"['Oligo', 'Micro']"
+BIN1,2,"['OPC', 'Vasc']"
+BMP4,1,['Inh']
+BMP6,2,"['Astro', 'Vasc']"
+BNIP3L,1,['OPC']
+BTG2,3,"['Exc', 'Inh', 'Vasc']"
+C3,2,"['Inh', 'Vasc']"
+CCL5,2,"['Astro', 'Micro']"
+CCN2,1,['Exc']
+CCND1,2,"['Oligo', 'Vasc']"
+CD34,1,['Astro']
+CD44,2,"['Exc', 'Micro']"
+CD82,2,"['Exc', 'Inh']"
+CD9,1,['Exc']
+CDK5,1,['Oligo']
+CDKN1A,1,['Vasc']
+CDKN1B,1,['OPC']
+CDKN1C,1,['Exc']
+CDKN2A,1,['Inh']
+CDKN2B,2,"['Oligo', 'Inh']"
+CHD5,2,"['Astro', 'OPC']"
+CHEK2,2,"['Exc', 'Astro']"
+CITED2,1,['Oligo']
+COL1A2,1,['Oligo']
+CR382285.2,1,['Exc']
+CREG1,1,['OPC']
+CRYAB,2,"['Exc', 'OPC']"
+CTSB,2,"['Oligo', 'Vasc']"
+CXCL14,2,"['Exc', 'Oligo']"
+CXCL16,2,"['Oligo', 'Vasc']"
+CXCL3,1,['Astro']
+CYP1B1,1,['Astro']
+DAB2,2,"['OPC', 'Micro']"
+EDN1,2,"['Inh', 'Vasc']"
+EGF,1,['OPC']
+EGFR,2,"['Exc', 'Micro']"
+EIF4A1,3,"['Exc', 'OPC', 'Micro']"
+ETS2,3,"['Oligo', 'Inh', 'OPC']"
+F3,2,"['Exc', 'Oligo']"
+FANCD2,1,['Vasc']
+FGF2,2,"['Exc', 'Oligo']"
+FILIP1L,1,['OPC']
+FN1,1,['Inh']
+GADD45A,2,"['Inh', 'Vasc']"
+GEM,2,"['Exc', 'Vasc']"
+GEMIN2,1,['OPC']
+GJA1,4,"['Exc', 'Oligo', 'OPC', 'Micro']"
+GMFG,2,"['Inh', 'Vasc']"
+GNG11,1,['Exc']
+GRIK2,2,"['Micro', 'Vasc']"
+GRK6,1,['Vasc']
+GUK1,1,['Vasc']
+HEPACAM,1,['Exc']
+HGF,3,"['Exc', 'Inh', 'Vasc']"
+HMGA1,1,['Astro']
+HMGA2,1,['Micro']
+HSPA2,2,"['Exc', 'Vasc']"
+HTRA1,1,['Exc']
+ICAM1,5,"['Exc', 'Oligo', 'Inh', 'Micro', 'Vasc']"
+IFI16,1,['Exc']
+IGF1,3,"['Exc', 'Astro', 'Micro']"
+IGFBP2,2,"['Oligo', 'Astro']"
+IGFBP3,3,"['Oligo', 'Micro', 'Vasc']"
+IGFBP4,4,"['Exc', 'Oligo', 'Inh', 'Astro']"
+IGFBP6,2,"['Micro', 'Vasc']"
+IGFBP7,2,"['Exc', 'Inh']"
+IGSF3,1,['Oligo']
+IL15,1,['Oligo']
+IL18,2,"['Oligo', 'Vasc']"
+ING2,2,"['OPC', 'Micro']"
+IRF1,2,"['Exc', 'Oligo']"
+IRF5,2,"['Oligo', 'Vasc']"
+IRF7,2,"['Astro', 'OPC']"
+ISG15,3,"['Exc', 'OPC', 'Micro']"
+ITGA2,1,['Inh']
+ITPKA,1,['Oligo']
+JUN,1,['Vasc']
+JUNB,4,"['Exc', 'Inh', 'OPC', 'Micro']"
+KDM6B,3,"['Oligo', 'OPC', 'Micro']"
+KITLG,1,['Oligo']
+KLF4,1,['Oligo']
+LAYN,2,"['Exc', 'Inh']"
+LCP1,3,"['Exc', 'Oligo', 'Astro']"
+MAP2K2,1,['OPC']
+MAPK12,1,['Oligo']
+MAST1,2,"['Micro', 'Vasc']"
+MCRS1,1,['OPC']
+MDM2,1,['Vasc']
+MMP14,1,['Vasc']
+MMP2,3,"['Astro', 'OPC', 'Micro']"
+MST1,1,['Astro']
+MT1G,2,"['Exc', 'Micro']"
+MVP,1,['Inh']
+NDN,1,['Astro']
+NFKBIA,2,"['Micro', 'Vasc']"
+NINJ1,1,['Exc']
+NOLC1,2,"['Inh', 'Vasc']"
+NR5A2,1,['Astro']
+NRG1,2,"['Oligo', 'Astro']"
+NRSN2,1,['Oligo']
+NUAK1,1,['OPC']
+PAPPA,1,['Oligo']
+PCGF2,1,['Astro']
+PDGFB,1,['Oligo']
+PDIK1L,1,['OPC']
+PEA15,2,"['Micro', 'Vasc']"
+PECAM1,2,"['Oligo', 'Inh']"
+PGF,1,['Astro']
+PIN1,2,"['Astro', 'OPC']"
+PLA2R1,1,['Micro']
+PLAT,2,"['Exc', 'Inh']"
+PLAUR,1,['Inh']
+PTGS2,1,['Inh']
+RAB5B,1,['Vasc']
+RABGGTA,2,"['Oligo', 'Micro']"
+RAP1GAP,2,"['Astro', 'OPC']"
+RASSF1,1,['Astro']
+RBM38,1,['Vasc']
+RELB,1,['Inh']
+RGL2,1,['Inh']
+RHOB,2,"['Exc', 'OPC']"
+RPS6KA5,1,['Vasc']
+RRAS,1,['Astro']
+RUNX1,2,"['Inh', 'Astro']"
+SALL1,1,['Exc']
+SELPLG,2,"['Exc', 'Inh']"
+SEMA3F,2,"['Exc', 'Inh']"
+SEPSECS-AS1,1,['Oligo']
+SERPINE1,2,"['Exc', 'Oligo']"
+SLC31A2,1,['OPC']
+SNAI2,2,"['Inh', 'Vasc']"
+SNHG20,1,['Exc']
+SPI1,3,"['Oligo', 'Inh', 'Vasc']"
+SPX,1,['Exc']
+STAT5A,1,['Exc']
+STAT6,1,['Oligo']
+SUMO2,1,['Exc']
+SUMO3,1,['Astro']
+SYK,4,"['Exc', 'Inh', 'Astro', 'Vasc']"
+TAGLN,3,"['Exc', 'Astro', 'Micro']"
+TES,1,['Vasc']
+TGFBI,2,"['Exc', 'Micro']"
+TIMP2,1,['Exc']
+TNFAIP2,2,"['Exc', 'Vasc']"
+TNFAIP3,4,"['Exc', 'Oligo', 'OPC', 'Micro']"
+TNFRSF1A,1,['Oligo']
+TNFRSF1B,2,"['Exc', 'Oligo']"
+TP53,2,"['Inh', 'Vasc']"
+TP53BP2,1,['Vasc']
+TRGC2,1,['Micro']
+TSPYL5,2,"['Astro', 'OPC']"
+TXNIP,1,['Exc']
+VCAN,3,"['Exc', 'Oligo', 'Micro']"
+VEGFC,2,"['Oligo', 'Inh']"
+VGF,3,"['Exc', 'Astro', 'OPC']"
+VIM,2,"['Exc', 'Oligo']"
+WIF1,2,"['Exc', 'Oligo']"
+WNT16,1,['Exc']
+XAF1,2,"['Exc', 'Oligo']"
+ZFP36,3,"['Oligo', 'OPC', 'Vasc']"
+ZNF713,2,"['Exc', 'Oligo']"
+ZNF723,1,['Exc']
+ZNF784,1,['Oligo']

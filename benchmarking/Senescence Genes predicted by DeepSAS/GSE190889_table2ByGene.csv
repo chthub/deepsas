@@ -1,0 +1,152 @@
+gene,cell_type_count,cell_types
+AC005702.1,1,['Ciliated']
+AC090360.1,1,['Ciliated']
+ADSSL1,1,['Club']
+AIF1,2,"['Club', 'Goblet']"
+BET1,1,['Basal']
+CDK5,3,"['AT2', 'Ciliated', 'Club']"
+CDKN1A,1,['Club']
+CDKN1B,1,['Club']
+CDKN1C,1,['Suprabasal']
+CDKN2B,1,['Club']
+CEACAM1,1,['AT2']
+CEBPB,1,['Basal']
+CHEK2,1,['Suprabasal']
+CLCA2,3,"['Ciliated', 'Club', 'Goblet']"
+COL1A2,3,"['Ciliated', 'Club', 'Basal']"
+CRYAB,3,"['Ciliated', 'Goblet', 'Basal']"
+CTNNB1,1,['Goblet']
+CTSB,1,['Club']
+CXCL12,3,"['Ciliated', 'Goblet', 'Basal']"
+CXCL3,1,['Club']
+CXCL8,2,"['Club', 'Suprabasal']"
+DKK1,2,"['Ciliated', 'Goblet']"
+EDN1,1,['Club']
+EGF,1,['AT2']
+EGFR,1,['Club']
+EIF2AK2,2,"['Goblet', 'Suprabasal']"
+EP400,1,['AT2']
+EREG,1,['Club']
+ERRFI1,1,['Club']
+FANCD2,3,"['AT2', 'Goblet', 'Basal']"
+FASTK,1,['Goblet']
+FN1,1,['Club']
+GADD45A,1,['Suprabasal']
+GDF15,1,['Club']
+GEM,2,"['Goblet', 'Suprabasal']"
+GEMIN2,3,"['AT2', 'Goblet', 'Basal']"
+GRK4,2,"['AT2', 'Club']"
+GRK6,2,"['Ciliated', 'Goblet']"
+GSN,1,['AT2']
+HIPK2,2,"['AT2', 'Goblet']"
+HMGA1,2,"['Club', 'Goblet']"
+HMGA2,3,"['Club', 'Goblet', 'Suprabasal']"
+HSPA9,2,"['Club', 'Basal']"
+HTATIP2,1,['AT2']
+HTRA1,2,"['Club', 'Basal']"
+ICAM1,2,"['Club', 'Basal']"
+ICAM3,1,['Club']
+IFI16,1,['Suprabasal']
+IGFBP2,1,['Goblet']
+IGFBP5,1,['Goblet']
+IGSF3,1,['Basal']
+IL6ST,1,['Suprabasal']
+IQGAP2,3,"['AT2', 'Club', 'Goblet']"
+IRF1,2,"['Club', 'Goblet']"
+IRF5,2,"['Ciliated', 'Club']"
+ISG15,1,['Suprabasal']
+ITPK1,3,"['Club', 'Goblet', 'Suprabasal']"
+JAK2,3,"['AT2', 'Ciliated', 'Goblet']"
+JUNB,2,"['Club', 'Goblet']"
+KLF4,1,['Club']
+LCOR,1,['Club']
+LCP1,2,"['Ciliated', 'Club']"
+MAPK12,2,"['AT2', 'Basal']"
+MAST1,3,"['AT2', 'Ciliated', 'Goblet']"
+MCRS1,1,['Ciliated']
+MDM2,3,"['AT2', 'Club', 'Goblet']"
+METTL14,1,['Goblet']
+MINK1,2,"['AT2', 'Club']"
+MMP1,2,"['Club', 'Suprabasal']"
+MMP13,1,['Club']
+MMP2,1,['Basal']
+MMP3,2,"['Club', 'Basal']"
+MOB3A,2,"['Club', 'Basal']"
+MST1,2,"['AT2', 'Basal']"
+MT1G,1,['AT2']
+MXD4,1,['Basal']
+NDN,1,['Ciliated']
+NOLC1,1,['Suprabasal']
+NQO1,1,['Basal']
+NRG1,2,"['Ciliated', 'Goblet']"
+NRSN2,1,['Suprabasal']
+NUAK1,1,['Basal']
+OPTN,1,['AT2']
+PAK2,1,['Goblet']
+PAPPA,2,"['AT2', 'Club']"
+PBRM1,2,"['Club', 'Goblet']"
+PCGF2,1,['Ciliated']
+PDGFB,1,['Club']
+PDIK1L,2,"['Ciliated', 'Club']"
+PDPK1,4,"['Club', 'Goblet', 'Basal', 'Suprabasal']"
+PDZD2,1,['Club']
+PEA15,2,"['Club', 'Suprabasal']"
+PECAM1,2,"['Goblet', 'Basal']"
+PGF,1,['Basal']
+PIGF,1,['Suprabasal']
+PLAT,1,['Club']
+PLAU,1,['Club']
+PNPT1,2,"['Club', 'Goblet']"
+PROX1,4,"['Ciliated', 'Club', 'Goblet', 'Basal']"
+PTTG1,1,['Club']
+PURB,3,"['Ciliated', 'Club', 'Goblet']"
+RAB13,1,['Suprabasal']
+RABGGTA,1,['Ciliated']
+RAF1,1,['Club']
+RASSF1,3,"['Club', 'Goblet', 'Basal']"
+RBM11,1,['Basal']
+RBM38,1,['Basal']
+RELA,1,['Goblet']
+RELB,1,['Club']
+RGL2,2,"['Goblet', 'Basal']"
+RHOB,1,['Basal']
+RNASEL,1,['Goblet']
+RRAS,1,['Suprabasal']
+RUNX1,1,['Club']
+SEMA3F,3,"['Club', 'Goblet', 'Basal']"
+SERPINB2,3,"['Ciliated', 'Club', 'Goblet']"
+SERPINE1,2,"['Club', 'Goblet']"
+SIK1,2,"['Club', 'Basal']"
+SLC13A3,2,"['Ciliated', 'Goblet']"
+SLC31A2,1,['Club']
+SMAD3,2,"['Club', 'Suprabasal']"
+SMURF2,2,"['Club', 'Suprabasal']"
+SOX5,1,['Ciliated']
+SPARC,1,['AT2']
+SPI1,2,"['AT2', 'Club']"
+SPOP,1,['Basal']
+SPX,2,"['AT2', 'Ciliated']"
+STAT5A,1,['AT2']
+STAT6,1,['AT2']
+SUMO2,1,['Suprabasal']
+TBPL1,1,['Basal']
+TES,1,['Club']
+TGFBI,2,"['AT2', 'Club']"
+THBS1,1,['Club']
+TIGAR,1,['AT2']
+TNF,1,['Ciliated']
+TNFAIP3,1,['Club']
+TNFRSF10C,4,"['AT2', 'Ciliated', 'Goblet', 'Basal']"
+TNFRSF1A,1,['Suprabasal']
+TNFRSF1B,3,"['AT2', 'Club', 'Goblet']"
+TRIM28,2,"['Club', 'Goblet']"
+TSPYL5,3,"['Ciliated', 'Goblet', 'Basal']"
+TXNIP,2,"['Club', 'Goblet']"
+TYK2,2,"['AT2', 'Basal']"
+UBTD1,1,['Basal']
+ULK3,1,['Basal']
+VCAN,2,"['Ciliated', 'Basal']"
+WNT5A,2,"['Ciliated', 'Goblet']"
+XAF1,1,['Ciliated']
+ZFP36,1,['Club']
+ZMYM3,1,['Goblet']

@@ -1,0 +1,193 @@
+gene,cell_type_count,cell_types
+AAK1,1,[np.int64(3)]
+ABI3BP,1,[np.int64(0)]
+AHR,3,"[np.int64(6), np.int64(5), np.int64(3)]"
+ALDH1A3,2,"[np.int64(2), np.int64(1)]"
+ANGPT1,2,"[np.int64(2), np.int64(8)]"
+ANGPTL4,3,"[np.int64(0), np.int64(8), np.int64(4)]"
+ARID4B,2,"[np.int64(4), np.int64(3)]"
+ATF6,2,"[np.int64(0), np.int64(1)]"
+ATR,2,"[np.int64(0), np.int64(3)]"
+ATRAID,1,[np.int64(8)]
+ATRX,1,[np.int64(6)]
+ATXN10,1,[np.int64(4)]
+AXL,1,[np.int64(6)]
+BCL2,1,[np.int64(6)]
+BCL2L2,1,[np.int64(3)]
+BCLAF1,1,[np.int64(4)]
+BEX3,2,"[np.int64(2), np.int64(4)]"
+BIN1,1,[np.int64(5)]
+BMP4,1,[np.int64(8)]
+BMP6,4,"[np.int64(2), np.int64(0), np.int64(8), np.int64(1)]"
+BMPR2,5,"[np.int64(8), np.int64(6), np.int64(4), np.int64(1), np.int64(5)]"
+BNIP3L,1,[np.int64(8)]
+BRAF,1,[np.int64(2)]
+BRD7,1,[np.int64(3)]
+BTG2,4,"[np.int64(2), np.int64(8), np.int64(5), np.int64(3)]"
+C1QA,1,[np.int64(0)]
+C3,1,[np.int64(4)]
+CD34,2,"[np.int64(6), np.int64(5)]"
+CD44,1,[np.int64(1)]
+CD82,1,[np.int64(5)]
+CDK5,1,[np.int64(2)]
+CDKN1B,1,[np.int64(5)]
+CDKN1C,3,"[np.int64(2), np.int64(8), np.int64(6)]"
+CDKN2A,1,[np.int64(2)]
+CDKN2AIP,1,[np.int64(4)]
+CDKN2B,2,"[np.int64(2), np.int64(5)]"
+CDKN2D,1,[np.int64(2)]
+CEBPB,2,"[np.int64(8), np.int64(1)]"
+CHEK2,1,[np.int64(1)]
+CITED2,1,[np.int64(0)]
+CLTB,2,"[np.int64(8), np.int64(4)]"
+COL1A2,1,[np.int64(6)]
+CREG1,2,"[np.int64(6), np.int64(4)]"
+CRYAB,2,"[np.int64(2), np.int64(4)]"
+CSMD3,1,[np.int64(0)]
+CTNNB1,1,[np.int64(8)]
+CTSB,1,[np.int64(6)]
+CXCL12,2,"[np.int64(8), np.int64(4)]"
+CXCL14,2,"[np.int64(6), np.int64(3)]"
+CYP1B1,1,[np.int64(2)]
+DLC1,3,"[np.int64(8), np.int64(4), np.int64(3)]"
+EDN1,2,"[np.int64(4), np.int64(1)]"
+EGF,1,[np.int64(0)]
+EGLN1,1,[np.int64(2)]
+EHF,4,"[np.int64(2), np.int64(0), np.int64(4), np.int64(5)]"
+EIF2S2,1,[np.int64(2)]
+ERBB2,2,"[np.int64(2), np.int64(5)]"
+ERRFI1,1,[np.int64(0)]
+ESM1,1,[np.int64(4)]
+F3,2,"[np.int64(6), np.int64(3)]"
+FANCD2,1,[np.int64(0)]
+FAS,1,[np.int64(4)]
+FBXO4,1,[np.int64(4)]
+FGF1,3,"[np.int64(4), np.int64(1), np.int64(5)]"
+FN1,3,"[np.int64(8), np.int64(6), np.int64(4)]"
+GADD45A,3,"[np.int64(2), np.int64(8), np.int64(4)]"
+GEM,4,"[np.int64(2), np.int64(6), np.int64(1), np.int64(3)]"
+GEMIN2,3,"[np.int64(0), np.int64(4), np.int64(3)]"
+GLB1,1,[np.int64(4)]
+GRK4,1,[np.int64(1)]
+GRK6,2,"[np.int64(0), np.int64(1)]"
+GSN,2,"[np.int64(2), np.int64(6)]"
+HBP1,4,"[np.int64(0), np.int64(8), np.int64(4), np.int64(1)]"
+HGF,1,[np.int64(2)]
+HIPK2,1,[np.int64(2)]
+HMGA1,2,"[np.int64(0), np.int64(3)]"
+HMGA2,1,[np.int64(1)]
+HMGB1,1,[np.int64(6)]
+HPS5,2,"[np.int64(1), np.int64(3)]"
+HSPA2,1,[np.int64(8)]
+HSPA9,3,"[np.int64(2), np.int64(8), np.int64(5)]"
+HTATIP2,4,"[np.int64(2), np.int64(6), np.int64(5), np.int64(3)]"
+ICAM1,2,"[np.int64(8), np.int64(1)]"
+IGF1,1,[np.int64(0)]
+IGFBP3,1,[np.int64(0)]
+IGFBP6,2,"[np.int64(2), np.int64(4)]"
+IGFBP7,1,[np.int64(6)]
+IGSF3,1,[np.int64(4)]
+IL15,1,[np.int64(4)]
+IL2,2,"[np.int64(2), np.int64(0)]"
+IL6ST,3,"[np.int64(2), np.int64(8), np.int64(6)]"
+IL7,1,[np.int64(3)]
+ING1,1,[np.int64(8)]
+ING2,1,[np.int64(0)]
+INHA,1,[np.int64(1)]
+IQGAP2,1,[np.int64(1)]
+IRF7,1,[np.int64(2)]
+ISG15,1,[np.int64(8)]
+ITGA2,1,[np.int64(0)]
+JUN,3,"[np.int64(2), np.int64(8), np.int64(6)]"
+JUNB,2,"[np.int64(8), np.int64(5)]"
+KITLG,1,[np.int64(4)]
+KLF4,2,"[np.int64(2), np.int64(6)]"
+LAYN,1,[np.int64(0)]
+LCP1,3,"[np.int64(2), np.int64(4), np.int64(1)]"
+MAP2K1,2,"[np.int64(0), np.int64(4)]"
+MAP2K3,3,"[np.int64(2), np.int64(4), np.int64(1)]"
+MAPK12,1,[np.int64(4)]
+MCRS1,2,"[np.int64(2), np.int64(4)]"
+METTL14,1,[np.int64(3)]
+MMP3,1,[np.int64(1)]
+MOB3A,1,[np.int64(1)]
+MS4A6E,1,[np.int64(0)]
+MVP,1,[np.int64(8)]
+NAP1L4,2,"[np.int64(2), np.int64(5)]"
+NDN,1,[np.int64(1)]
+NLRX1,2,"[np.int64(2), np.int64(1)]"
+NOLC1,2,"[np.int64(8), np.int64(4)]"
+NQO1,3,"[np.int64(6), np.int64(4), np.int64(5)]"
+NRG1,1,[np.int64(1)]
+PAPPA,2,"[np.int64(2), np.int64(4)]"
+PBRM1,1,[np.int64(5)]
+PCDH10,1,[np.int64(0)]
+PCGF2,1,[np.int64(0)]
+PDCD10,1,[np.int64(8)]
+PDE6G,1,[np.int64(1)]
+PDGFB,1,[np.int64(4)]
+PDPK1,2,"[np.int64(6), np.int64(5)]"
+PDZD2,1,[np.int64(2)]
+PECAM1,1,[np.int64(1)]
+PGF,2,"[np.int64(2), np.int64(1)]"
+PIGF,2,"[np.int64(0), np.int64(6)]"
+PIM1,1,[np.int64(5)]
+PLAT,1,[np.int64(4)]
+PLAUR,3,"[np.int64(2), np.int64(4), np.int64(1)]"
+PNPT1,2,"[np.int64(4), np.int64(3)]"
+PPP2R1A,1,[np.int64(6)]
+PROX1,3,"[np.int64(0), np.int64(8), np.int64(4)]"
+PTBP1,2,"[np.int64(2), np.int64(5)]"
+PURB,1,[np.int64(6)]
+RAB13,1,[np.int64(2)]
+RAC1,2,"[np.int64(8), np.int64(5)]"
+RAF1,2,"[np.int64(1), np.int64(3)]"
+RBL2,1,[np.int64(1)]
+RBM38,1,[np.int64(3)]
+RBP1,2,"[np.int64(2), np.int64(5)]"
+RELA,3,"[np.int64(2), np.int64(8), np.int64(4)]"
+RELB,2,"[np.int64(0), np.int64(4)]"
+RGSL1,1,[np.int64(1)]
+RHOB,1,[np.int64(8)]
+RNASEL,2,"[np.int64(2), np.int64(0)]"
+RPS6KA5,1,[np.int64(3)]
+RRAS,4,"[np.int64(2), np.int64(8), np.int64(6), np.int64(4)]"
+RUNX1,1,[np.int64(3)]
+S100A11,1,[np.int64(8)]
+SEMA3F,1,[np.int64(8)]
+SERPINE2,3,"[np.int64(0), np.int64(8), np.int64(5)]"
+SIK1,3,"[np.int64(2), np.int64(0), np.int64(1)]"
+SLC13A4,1,[np.int64(1)]
+SLC31A2,2,"[np.int64(1), np.int64(3)]"
+SMAD3,2,"[np.int64(4), np.int64(1)]"
+SMAD5,1,[np.int64(0)]
+SMARCB1,1,[np.int64(4)]
+SMPD1,3,"[np.int64(2), np.int64(8), np.int64(3)]"
+SMURF2,3,"[np.int64(0), np.int64(8), np.int64(5)]"
+SOD1,2,"[np.int64(8), np.int64(5)]"
+SOX5,1,[np.int64(1)]
+SPARC,2,"[np.int64(2), np.int64(8)]"
+SPOP,1,[np.int64(5)]
+STAT1,1,[np.int64(4)]
+STAT5A,2,"[np.int64(0), np.int64(1)]"
+TFAP2A,1,[np.int64(1)]
+TGFB1I1,2,"[np.int64(8), np.int64(4)]"
+TGFBI,2,"[np.int64(8), np.int64(6)]"
+THBS1,1,[np.int64(3)]
+TIGAR,1,[np.int64(1)]
+TIMP2,3,"[np.int64(8), np.int64(4), np.int64(5)]"
+TLR2,2,"[np.int64(1), np.int64(3)]"
+TNFAIP2,3,"[np.int64(2), np.int64(8), np.int64(6)]"
+TNFRSF11B,1,[np.int64(0)]
+TNFRSF1A,1,[np.int64(8)]
+TOM1,2,"[np.int64(0), np.int64(4)]"
+TP53BP1,1,[np.int64(3)]
+TRIM28,1,[np.int64(2)]
+TRIM36,1,[np.int64(0)]
+TXNIP,2,"[np.int64(6), np.int64(3)]"
+TYK2,1,[np.int64(1)]
+ULK3,2,"[np.int64(4), np.int64(3)]"
+VCAN,1,[np.int64(3)]
+VEGFA,2,"[np.int64(4), np.int64(5)]"
+VEGFC,1,[np.int64(1)]
+WNT5A,2,"[np.int64(0), np.int64(4)]"
