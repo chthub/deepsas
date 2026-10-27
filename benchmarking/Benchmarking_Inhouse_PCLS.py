@@ -16,6 +16,10 @@ import pandas as pd
 from scipy.io import mmread
 from scipy.sparse import csr_matrix
 
+##Senepy
+import senepy as sp
+
+
 #Inhouse- Alveolar epithelial   
 adata=sc.read_h5ad('/fs/ess/PAS2148/Ahmed/pcls_DeepSAS/PCLS_adata_Majorcell.h5ad')
 
@@ -23,7 +27,7 @@ adata=sc.read_h5ad('/fs/ess/PAS2148/Ahmed/pcls_DeepSAS/PCLS_adata_Majorcell.h5ad
 adata.obs["b"]=adata.obs['Clusters']#to control for cell type variation when running DeepScence
 
 adata = DeepScence(adata, binarize=True,species='human')
-
+adata.obs['ds']##is the contioous score for DeepScence
 ##########SenCID
 pred_dict, recSID, tmpfiles = SenCID(adata = adata, 
                     sidnums = [1,2,3,4,5,6], 
@@ -48,7 +52,81 @@ sc.pl.violin(adata, keys = markers)
 
 #the SID with the highest recommendation score is considered to be most suitable for senescence evaluation
 
-adata.obs['SID_Score'] = pred_dict['SID6'].loc[adata.obs_names, 'SID_Score']
+adata.obs['SID_Score'] = pred_dict['SID2'].loc[adata.obs_names, 'SID_Score']
+
+####Senepy
+hubs= sp.load_hubs(species='Human',sig_type='cell_type')
+translator = sp.translator(hub = hubs.hubs, data = adata)
+
+key = ("lung", "basal cell")
+
+lung_basal_hub = hubs.hubs[key]
+adata.obs['senpey_specific'] = sp.score_hub(adata, lung_basal_hub,translator=translator,binarize=False)
+
+hubs= sp.load_hubs(species='Human',sig_type='cell_type')
+translator = sp.translator(hub = hubs.hubs, data = adata)
+
+merge_results = hubs.merge_hubs(hubs.metadata, new_name = 'Universal',
+                calculate_thresh = True, p_thres = 0.05)
+
+
+adata.obs['senpey_universal'] = sp.score_hub(adata, hubs.hubs['Universal'],translator=translator,binarize=False)
+
+####AUCell SenMayo+CellAge
+markers=pd.read_csv('/fs/ess/PCON0022/Ahmed/ATAC2HiC/PBMC/scATAC-seq/PBMC_Hg19/Model/sencell-deepsas-v1/senescence_marker_list.csv')
+import pandas as pd
+
+gene_sets = {col: markers[col].dropna().tolist()for col in markers.columns}
+
+
+net = []
+for k, genes in gene_sets.items():
+    for g in genes:
+        net.append([k, g])
+
+net = pd.DataFrame(net, columns=["source","target"])
+
+import decoupler as dc
+net = net.drop_duplicates(subset=["source", "target"])
+dc.run_aucell( mat=adata, net=net, source="source", target="target")
+adata.obs = adata.obs.join(adata.obsm["aucell_estimate"])
+
+###ICE results
+ICE_result_cellage=pd.read_csv('/fs/ess/PAS1475/Ahmed/DeepSAS/Benchmark/ICE_es_adata_PCLS_cellage.csv',index_col='Unnamed: 0')
+ICE_result_deepsas=pd.read_csv('/fs/ess/PAS1475/Ahmed/DeepSAS/Benchmark/ICE_es_adata_PCLS_deepsas.csv',index_col='Unnamed: 0')
+AUCell_result_deepsas=pd.read_csv('/fs/ess/PAS1475/Ahmed/DeepSAS/Benchmark/AUCELL_PCLS_deepsas.csv',index_col='Unnamed: 0')
+
+
+adata.obs['ICE_cellage']=ICE_result_cellage.CellAge.values
+adata.obs['ICE_deepsas']=ICE_result_deepsas.DeepSAS_gene.values
+adata.obs['aucell_deepsas']=AUCell_result_deepsas['seu$DeepSAS_AUCell'].values
+adata.obs['senpey_universal']
+adata.obs['senpey_specific'] 
+#################################################AUROC
+from sklearn.metrics import roc_auc_score
+adata_epi = adata[adata.obs["clusters"] == "Epithelial"].copy()###comapre the epithelial cells 
+metrics = ["ds",                 ##DeepScence
+           "senpey_universal",   ##Senpey universal score
+           "senpey_specific",    ##cell specific senpey
+           "SID_Score",          ##SenCID score
+           "SnC scores",         ##DeepSAS score
+           "CellAge",            ##AUCell:CellAge
+           "GO",                 ##AUCell:GO
+           "SenMayo",            ##AUCell:SenMayo
+           "ICE_cellage",        ##ICE:CellAge
+           "ICE_deepsas",        ##ICE:DeepSAS
+           "aucell_deepsas"      ##AUCell:DeepSAS
+           ]
+
+df = adata_epi.obs[["Treatment", *metrics]].copy()
+df["label"] = df["Treatment"].eq("Bleomycin").astype(int)
+
+auc_df = pd.DataFrame({
+    "metric": metrics,
+    "AUROC": [roc_auc_score(df["label"], df[m]) for m in metrics]
+}).sort_values("AUROC", ascending=False)
+
+auc_df
 
 ####GSE190889---Human IPF
  
