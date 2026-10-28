@@ -238,6 +238,7 @@ auc_df = pd.DataFrame(aucs, columns=["metric","AUROC"])
 auc_df
 
 ####GSE233431
+adata=sc.read_h5ad('data/GSE233431_Upar_human.h5ad')
 adata.obs["b"]=adata.obs['clusters']#to control for cell type variation when running DeepScence
 
 dca(adata)
@@ -264,12 +265,86 @@ sc.pl.violin(adata, keys = markers)
 
 adata.obs['SID_Score'] = pred_dict['SID1'].loc[adata.obs_names, 'SID_Score']
 
+###Senepy using the mouse gene symbols
+adata_mouse=sc.read_h5ad('data/GSE233431_Upar_mouse.h5ad')
+sc.pp.normalize_total(adata_mouse, target_sum=1e4)
+sc.pp.log1p(adata_mouse)
+
+hubs= sp.load_hubs(species='Mouse',sig_type='cell_type')
+translator = sp.translator(hub = hubs.hubs, data = adata_mouse)
+
+key = ('Large_Intestine', 'epithelial cell ')
+
+intestine_hub = hubs.hubs[key]
+adata_mouse.obs['senpey_celltype'] = sp.score_hub(adata_mouse, intestine_hub,translator=translator,binarize=False)
+
+hubs= sp.load_hubs(species='Mouse',sig_type='cell_type')
+translator = sp.translator(hub = hubs.hubs, data = adata_mouse)
+
+merge_results = hubs.merge_hubs(hubs.metadata, new_name = 'Universal',
+                calculate_thresh = True, p_thres = 0.05)
+
+adata_mouse.obs['senpey_universal'] = sp.score_hub(adata_mouse, hubs.hubs['Universal'],translator=translator,binarize=False)
+
+adata.obs['senpey_universal']=adata_mouse.obs['senpey_universal'].values
+adata.obs['senpey_celltype']=adata_mouse.obs['senpey_celltype'].values
+
+markers=pd.read_csv('/fs/ess/PCON0022/Ahmed/ATAC2HiC/PBMC/scATAC-seq/PBMC_Hg19/Model/sencell-deepsas-v1/senescence_marker_list.csv')
+import pandas as pd
+
+gene_sets = {
+    col: markers[col].dropna().tolist()
+    for col in markers.columns
+}
+
+import pandas as pd
+
+net = []
+for k, genes in gene_sets.items():
+    for g in genes:
+        net.append([k, g])
+
+net = pd.DataFrame(net, columns=["source","target"])
+import decoupler as dc
+net = net.drop_duplicates(subset=["source", "target"])
+dc.run_aucell(
+    mat=adata,
+    net=net,
+    source="source",
+    target="target",use_raw=False
+)
+adata.obs = adata.obs.join(adata.obsm["aucell_estimate"])
+
+ICE_result_cellage=pd.read_csv('/fs/ess/PAS1475/Ahmed/DeepSAS/Benchmark/ICE_es_GSE233431.csv',index_col='Unnamed: 0')
+ICE_result_deepsas=pd.read_csv('/fs/ess/PAS1475/Ahmed/DeepSAS/Benchmark/ICE_es_adata_sub_uPAR_deepsas.csv',index_col='Unnamed: 0')
+aucell_result_deepsas=pd.read_csv('/fs/ess/PAS1475/Ahmed/DeepSAS/Benchmark/AUCELL_es_adata_uPAR_deepsas.csv',index_col='Unnamed: 0')
+
+
+adata.obs['ICE_cellage']=ICE_result_cellage.CellAge.values
+adata.obs['ICE_deepsas']=ICE_result_deepsas.DeepSAS_gene.values
+adata.obs['aucell_deepsas']=aucell_result_deepsas['seu$DeepSAS_gene_UCell'].values
+
 
 adata_sub = adata[adata.obs["seurat_clusters"].isin(["0","1","3","7"])].copy()##Epithelial
 adata_male = adata_sub[
     adata_sub.obs["Sample"].str.contains("Male")
 ].copy()
 
+from sklearn.metrics import roc_auc_score
+
+df=adata_male.obs[['Sample','SnC scores','ds','Universal_score','SID_Score','CellAge', 'GO', 'SenMayo','ICE_cellage','ICE_deepsas', 'aucell_deepsas','SenePy_intestine']]
+df = df.dropna()
+
+df["label"] = (df["Sample"]=="Male_uPAR_positive").astype(int)
+
+aucs = []
+metrics=['SnC scores','ds', 'Universal_score','SID_Score','CellAge',  'GO', 'SenMayo','ICE_cellage','ICE_deepsas', 'aucell_deepsas','SenePy_intestine']
+for m in metrics:
+    auc = roc_auc_score(df["label"], df[m])
+    aucs.append([m, auc])
+
+auc_df = pd.DataFrame(aucs, columns=["metric","AUROC"])
+auc_df
 ##GSE264648 Microglia
 
 adata=sc.read_h5ad('adata_AD.h5ad')
@@ -300,12 +375,81 @@ sc.pl.violin(adata, keys = markers)
 
 adata.obs['SID_Score'] = pred_dict['SID3'].loc[adata.obs_names, 'SID_Score']
 
+hubs= sp.load_hubs(species='Human',sig_type='cell_type')
+translator = sp.translator(hub = hubs.hubs, data = adata)
+
+key = ('hippocampus', 'microglia')
+
+microglia_hub = hubs.hubs[key]
+adata.obs['senpey_basal'] = sp.score_hub(adata, microglia_hub,translator=translator,binarize=False)
+
+hubs= sp.load_hubs(species='Human',sig_type='cell_type')
+translator = sp.translator(hub = hubs.hubs, data = adata)
+
+merge_results = hubs.merge_hubs(hubs.metadata, new_name = 'Universal',
+                calculate_thresh = True, p_thres = 0.05)
+
+
+adata.obs['senpey_universal'] = sp.score_hub(adata, hubs.hubs['Universal'],translator=translator,binarize=False)
+
+markers=pd.read_csv('/fs/ess/PCON0022/Ahmed/ATAC2HiC/PBMC/scATAC-seq/PBMC_Hg19/Model/sencell-deepsas-v1/senescence_marker_list.csv')
+import pandas as pd
+
+gene_sets = {
+    col: markers[col].dropna().tolist()
+    for col in markers.columns
+}
+
+import pandas as pd
+
+net = []
+for k, genes in gene_sets.items():
+    for g in genes:
+        net.append([k, g])
+
+net = pd.DataFrame(net, columns=["source","target"])
+import decoupler as dc
+net = net.drop_duplicates(subset=["source", "target"])
+dc.run_aucell(
+    mat=adata,
+    net=net,
+    source="source",
+    target="target",use_raw=False
+)
+adata.obs = adata.obs.join(adata.obsm["aucell_estimate"])
+
+ICE_result_=pd.read_csv('/fs/ess/PAS1475/Ahmed/DeepSAS/Benchmark/ICE_es_adata_AD.csv',index_col='Unnamed: 0')
+ICE_result_deepsas=pd.read_csv('/fs/ess/PAS1475/Ahmed/DeepSAS/Benchmark/ICE_es_adata_glia_deepsas.csv',index_col='Unnamed: 0')
+AUCell_result_deepsas=pd.read_csv('/fs/ess/PAS1475/Ahmed/DeepSAS/Benchmark/AUCELL_glia_deepsas.csv',index_col='Unnamed: 0')
+
+
+adata.obs['ICE_cellage']=ICE_result_.CellAge.values
+adata.obs['ICE_deepsas']=ICE_result_deepsas.DeepSAS_gene.values
+adata.obs['aucell_deepsas']=AUCell_result_deepsas['seu$DeepSAS_AUCell'].values
+
+
 adata_oligo = adata[
     adata.obs["clusters"].isin(["Micro"])
 ].copy()
 
 adata_oligo = adata_oligo[adata_oligo.obs["braak"].isin(['0', '6'])].copy()
+from sklearn.metrics import roc_auc_score
 
+
+df=adata_oligo.obs[['diagnosis','SnC scores','ds','Universal_score','SID_Score','CellAge', 'GO', 'SenMayo','ICE_cellage',
+                    'ICE_deepsas', 'aucell_deepsas']]
+df = df.dropna()
+
+df["label"] = (df["diagnosis"]=="AD").astype(int)
+
+aucs = []
+metrics=['SnC scores','ds', 'Universal_score','SID_Score','CellAge',  'GO', 'SenMayo','ICE_cellage','ICE_deepsas', 'aucell_deepsas']
+for m in metrics:
+    auc = roc_auc_score(df["label"], df[m])
+    aucs.append([m, auc])
+
+auc_df = pd.DataFrame(aucs, columns=["metric","AUROC"])
+auc_df
 ##GSE253338
 adata=sc.read_h5ad('GSE253338_P16_bladder_sub.h5ad')
 
@@ -337,10 +481,72 @@ sc.pl.violin(adata, keys = markers)
 
 adata.obs['SID_Score'] = pred_dict['SID2'].loc[adata.obs_names, 'SID_Score']
 
+sc.pp.normalize_total(adata, target_sum=1e4)
+sc.pp.log1p(adata)
+
+adata_mouse=sc.read_h5ad('/fs/ess/PAS1475/Ahmed/DeepSAS/Benchmark/GSE253338/adata_P16_muscle.h5ad')
+hubs= sp.load_hubs(species='Mouse',sig_type='cell_type')
+translator = sp.translator(hub = hubs.hubs, data = adata_mouse)
+
+merge_results = hubs.merge_hubs(hubs.metadata, new_name = 'Universal',
+                calculate_thresh = True, p_thres = 0.05)
+
+
+adata_mouse.obs['senpey_universal'] = sp.score_hub(adata_mouse, hubs.hubs['Universal'],translator=translator,binarize=False)
+
+###then transfer the value to the adata (human version)
+
+(you do it )
+
+markers=pd.read_csv('/fs/ess/PCON0022/Ahmed/ATAC2HiC/PBMC/scATAC-seq/PBMC_Hg19/Model/sencell-deepsas-v1/senescence_marker_list.csv')
+import pandas as pd
+
+gene_sets = {
+    col: markers[col].dropna().tolist()
+    for col in markers.columns
+}
+
+import pandas as pd
+
+net = []
+for k, genes in gene_sets.items():
+    for g in genes:
+        net.append([k, g])
+
+net = pd.DataFrame(net, columns=["source","target"])
+import decoupler as dc
+net = net.drop_duplicates(subset=["source", "target"])
+dc.run_aucell(
+    mat=adata,
+    net=net,
+    source="source",
+    target="target",use_raw=False
+)
+adata.obs = adata.obs.join(adata.obsm["aucell_estimate"])
+
+
+ICE_result_deepsas=pd.read_csv('/fs/ess/PAS1475/Ahmed/DeepSAS/Benchmark/ICE_es_adata_sub_balanced_muscle_deepsas.csv',index_col='Unnamed: 0')
+aucell_result_deepsas=pd.read_csv('/fs/ess/PAS1475/Ahmed/DeepSAS/Benchmark/AUCELL_es_adata_balanced_muscle_deepsas.csv',index_col='Unnamed: 0')
+
+
+adata.obs['ICE_deepsas']=ICE_result_deepsas.DeepSAS_gene.values
+adata.obs['aucell_deepsas']=aucell_result_deepsas['seu$DeepSAS_gene_UCell'].values
 adata_sub = adata[
-    adata.obs["integrated_snn_res.0.1"].isin(["0","3"])#"0","3" fibroblast, 1 basal
+    adata.obs["integrated_snn_res.0.1"].isin(["0","3"])#"0","3" fibroblast, "1" basal
 ].copy()
 
+import numpy as np, pandas as pd
+from sklearn.metrics import roc_auc_score
+
+metrics = ['SnC scores','ds','Universal_score','SID_Score','CellAge','GO','SenMayo','ICE_cellage','ICE_deepsas', 'aucell_deepsas']
+
+df = adata_sub.obs[['orig.ident'] + metrics].copy()
+df[metrics] = df[metrics].apply(pd.to_numeric, errors='coerce')
+df["label"] = (df["orig.ident"] == "P16_positive").astype(int)
+
+auc_df = pd.DataFrame({"metric": metrics, "AUROC": [roc_auc_score(df.loc[df[m].notna(),"label"], df.loc[df[m].notna(),m]) if df[m].notna().sum() > 0 and df.loc[df[m].notna(),"label"].nunique() == 2 else np.nan for m in metrics]})
+
+auc_df (make one for fibroblast/make one for basal cells
 
 ########GSE172410
 
@@ -379,29 +585,3 @@ adata = adata[adata.obs['clusters'] == 'satellite'].copy()
 
 
 
-#########################AUCell for CellAge and SenMayo
-markers=pd.read_csv('/fs/ess/PCON0022/Ahmed/ATAC2HiC/PBMC/scATAC-seq/PBMC_Hg19/Model/sencell-deepsas-v1/senescence_marker_list.csv')
-import pandas as pd
-
-gene_sets = {
-    col: markers[col].dropna().tolist()
-    for col in markers.columns
-}
-
-import pandas as pd
-
-net = []
-for k, genes in gene_sets.items():
-    for g in genes:
-        net.append([k, g])
-
-net = pd.DataFrame(net, columns=["source","target"])
-import decoupler as dc
-net = net.drop_duplicates(subset=["source", "target"])
-dc.run_aucell(
-    mat=adata,
-    net=net,
-    source="source",
-    target="target",use_raw=False
-)
-adata.obs = adata.obs.join(adata.obsm["aucell_estimate"])
