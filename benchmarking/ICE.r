@@ -1,3 +1,6 @@
+
+###this script using how we run ICE using PCLS data as example
+
 library(ICE)
 library(reticulate)
 
@@ -33,7 +36,7 @@ normalized_data<-as.matrix(SeuratObject@assays$RNA$data)
 class(normalized_data)
 dim(normalized_data)
 
-deepsas_gene<-read.csv('PCLS_Gene_table2_all_batches.csv')
+deepsas_gene<-read.csv('Senescence Genes predicted by DeepSAS/PCLS_Gene_table2.csv')
 head(deepsas_gene)
 deepsas_gene<-list('DeepSAS_gene'=deepsas_gene$gene)
 library(AUCell)
