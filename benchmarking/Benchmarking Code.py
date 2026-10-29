@@ -1,7 +1,7 @@
 
 # ============================================================
 # DeepSAS benchmarking
-###the continouse sensescense score predictecetd by DeepSAS are stored in column 'SnC scores' 
+###the continuous sensescense score predictecetd by DeepSAS are stored in column 'SnC scores' 
 # Dataset order:
 # 1. GSE253338 - p16 bladder
 # 2. GSE233431 - uPAR intestine
