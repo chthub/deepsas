@@ -181,7 +181,7 @@ def parse_args():
                         help='SnG candidate update rule: dynamic IQR-based '
                              'replacement (default) or a fixed-count policy '
                              'requesting 10 replacements per iteration')
-    parser.add_argument('--min_snc_per_type', type=int, default=1,
+    parser.add_argument('--min_snc_per_type', type=int, default=10,
                         help='Minimum candidate SnCs retained in a cell type')
     # ---- Contrastive-learning convergence (new) ----
     parser.add_argument('--max_iter', type=int, default=10,
