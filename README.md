@@ -294,7 +294,7 @@ list and L–R panel — are recorded under `marker_match` in
 | `--lr_decay`          | `0.85`  | Cell learning-rate multiplier after each outer iteration                                         |
 | `--iqr_multiplier`    | `1.5`   | Upper-fence multiplier for SnC scores and for SnG scores in`iqr` mode                          |
 | `--sng_update_mode`   | `iqr`   | SnG update rule: the default threshold-driven IQR policy or the optional`fixed10` policy       |
-| `--min_snc_per_type`  | `1`     | At least this many above-fence SnCs are required to retain a cell type's candidates              |
+| `--min_snc_per_type`  | `10`     | At least this many above-fence SnCs are required to retain a cell type's candidates              |
 | `--max_iter`          | `10`    | Maximum number of completed outer refinement iterations                                          |
 | `--convergence_tol`   | `0.9`   | Required Jaccard overlap for both candidate sets                                                 |
 
