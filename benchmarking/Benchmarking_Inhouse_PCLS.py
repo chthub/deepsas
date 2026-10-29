@@ -18,10 +18,10 @@ from scipy.sparse import csr_matrix
 
 ##Senepy
 import senepy as sp
-
+############################the continouse sensescense score predictecetd by DeepSAS are stored in column 'SnC scores' 
 
 #Inhouse- Alveolar epithelial   
-adata=sc.read_h5ad('/fs/ess/PAS2148/Ahmed/pcls_DeepSAS/PCLS_adata.h5ad')
+adata=sc.read_h5ad('Benchmark Data/PCLS_adata.h5ad')
 
 ########## DeepScence
 adata.obs["b"]=adata.obs['Clusters']#to control for cell type variation when running DeepScence
@@ -42,7 +42,6 @@ sc.pp.normalize_per_cell(adata, counts_per_cell_after=1e5)
 sc.pp.log1p(adata)
 sc.pp.highly_variable_genes(adata, min_mean=0.0125, max_mean=3, min_disp=0.5)
 adata = adata[:, adata.var['highly_variable']]
-#sc.pp.regress_out(adata, ['n_counts', 'percent_mito'] ) #, n_jobs=args.threads)
 sc.pp.scale(adata, max_value=10)
 sc.tl.pca(adata, svd_solver='arpack') 
 
@@ -130,7 +129,7 @@ auc_df
 
 ####GSE190889---Human IPF
  
-adata=sc.read_h5ad('/fs/ess/PAS2148/Ahmed/pcls_DeepSAS/GSE190889_IPF_human.h5ad')
+adata=sc.read_h5ad('Benchmark Data/GSE190889_IPF_human.h5ad')
 
 ##DeepScence
 adata.obs["b"]=adata.obs['clusters']#to control for cell type variation when running DeepScence
@@ -152,7 +151,7 @@ sc.pp.normalize_per_cell(adata, counts_per_cell_after=1e5)
 sc.pp.log1p(adata)
 sc.pp.highly_variable_genes(adata, min_mean=0.0125, max_mean=3, min_disp=0.5)
 adata = adata[:, adata.var['highly_variable']]
-#sc.pp.regress_out(adata, ['n_counts', 'percent_mito'] ) #, n_jobs=args.threads)
+
 sc.pp.scale(adata, max_value=10)
 sc.tl.pca(adata, svd_solver='arpack') 
 adata.obs = pd.concat([adata.obs, recSID.loc[adata.obs_names, :]], axis = 1)
@@ -256,7 +255,6 @@ sc.pp.normalize_per_cell(adata, counts_per_cell_after=1e5)
 sc.pp.log1p(adata)
 sc.pp.highly_variable_genes(adata, min_mean=0.0125, max_mean=3, min_disp=0.5)
 adata = adata[:, adata.var['highly_variable']]
-#sc.pp.regress_out(adata, ['n_counts', 'percent_mito'] ) #, n_jobs=args.threads)
 sc.pp.scale(adata, max_value=10)
 sc.tl.pca(adata, svd_solver='arpack') 
 adata.obs = pd.concat([adata.obs, recSID.loc[adata.obs_names, :]], axis = 1)
@@ -347,7 +345,7 @@ auc_df = pd.DataFrame(aucs, columns=["metric","AUROC"])
 auc_df
 ##GSE264648 Microglia
 
-adata=sc.read_h5ad('adata_AD.h5ad')
+adata=sc.read_h5ad('GSE264648_adata_AD.h5ad')
 adata.obs["b"]=adata.obs['clusters']#to control for cell type variation when running DeepScence
 
 dca(adata)
@@ -366,7 +364,6 @@ sc.pp.normalize_per_cell(adata, counts_per_cell_after=1e5)
 sc.pp.log1p(adata)
 sc.pp.highly_variable_genes(adata, min_mean=0.0125, max_mean=3, min_disp=0.5)
 adata = adata[:, adata.var['highly_variable']]
-#sc.pp.regress_out(adata, ['n_counts', 'percent_mito'] ) #, n_jobs=args.threads)
 sc.pp.scale(adata, max_value=10)
 sc.tl.pca(adata, svd_solver='arpack') 
 adata.obs = pd.concat([adata.obs, recSID.loc[adata.obs_names, :]], axis = 1)
@@ -450,6 +447,7 @@ for m in metrics:
 
 auc_df = pd.DataFrame(aucs, columns=["metric","AUROC"])
 auc_df
+
 ##GSE253338
 adata=sc.read_h5ad('GSE253338_P16_bladder_sub.h5ad')
 
@@ -484,7 +482,7 @@ adata.obs['SID_Score'] = pred_dict['SID2'].loc[adata.obs_names, 'SID_Score']
 sc.pp.normalize_total(adata, target_sum=1e4)
 sc.pp.log1p(adata)
 
-adata_mouse=sc.read_h5ad('/fs/ess/PAS1475/Ahmed/DeepSAS/Benchmark/GSE253338/adata_P16_muscle.h5ad')
+adata_mouse=sc.read_h5ad('Benchmark Data/GSE253338_P16_bladder_mouse.h5ad')
 hubs= sp.load_hubs(species='Mouse',sig_type='cell_type')
 translator = sp.translator(hub = hubs.hubs, data = adata_mouse)
 
@@ -495,7 +493,8 @@ merge_results = hubs.merge_hubs(hubs.metadata, new_name = 'Universal',
 adata_mouse.obs['senpey_universal'] = sp.score_hub(adata_mouse, hubs.hubs['Universal'],translator=translator,binarize=False)
 
 ###then transfer the value to the adata (human version)
-
+adata.obs['senpey_universal'] = adata_mouse.obs['senpey_universal'].reindex(adata.obs_names)
+adata.obs['senpey_celltype'] = adata_mouse.obs['senpey_celltype'].reindex(adata.obs_names)
 (you do it )
 
 markers=pd.read_csv('ICE+AUCell results/senescence_marker_list.csv')
@@ -551,7 +550,7 @@ auc_df (make one for fibroblast/make one for basal cells
 
 ########GSE172410
 
-adata=sc.read_h5ad('skeletal_human_version.h5ad')
+adata=sc.read_h5ad('Benchmark Data/GSE172410_muscle_human.h5ad')
 
 adata.obs["b"]=adata.obs['clusters']#to control for cell type variation when running DeepScence
 
@@ -571,7 +570,6 @@ sc.pp.normalize_per_cell(adata, counts_per_cell_after=1e5)
 sc.pp.log1p(adata)
 sc.pp.highly_variable_genes(adata, min_mean=0.0125, max_mean=3, min_disp=0.5)
 adata = adata[:, adata.var['highly_variable']]
-#sc.pp.regress_out(adata, ['n_counts', 'percent_mito'] ) #, n_jobs=args.threads)
 sc.pp.scale(adata, max_value=10)
 sc.tl.pca(adata, svd_solver='arpack') 
 adata.obs = pd.concat([adata.obs, recSID.loc[adata.obs_names, :]], axis = 1)
@@ -580,7 +578,7 @@ sc.pl.violin(adata, keys = markers)
 
 adata.obs['SID_Score'] = pred_dict['SID3'].loc[adata.obs_names, 'SID_Score']
 
-adata_mouse=sc.read_h5ad('/fs/ess/PAS1475/Ahmed/DeepSAS/Benchmark/GSE172410/adata_skeletal_muscle.h5ad')
+adata_mouse=sc.read_h5ad('Benchmark Data/GSE172410_muscle_mouse.h5ad')
 
 sc.pp.normalize_total(adata_mouse, target_sum=1e4)
 sc.pp.log1p(adata_mouse)
