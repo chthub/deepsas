@@ -14,8 +14,9 @@ print(magic.__version__)
 ")
 scipy_sparse <- import("scipy.sparse", convert = FALSE)
 
+adata <- ad$read_h5ad("PCLS_adata.h5ad")
 markers <- read.csv(
-  "/fs/ess/PCON0022/Ahmed/ATAC2HiC/PBMC/scATAC-seq/PBMC_Hg19/Model/sencell-deepsas-v1/senescence_marker_list.csv",##to get CellAGE
+  "ICE+AUCell results/senescence_marker_list.csv",##to get CellAGE
   stringsAsFactors = FALSE
 )
 
