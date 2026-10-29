@@ -173,7 +173,7 @@ dc.run_aucell(mat=adata, net=net, source="source", target="target", use_raw=Fals
 adata.obs = adata.obs.join(adata.obsm["aucell_estimate"])
 
 # SenePy - mouse gene symbols
-adata_mouse = sc.read_h5ad("data/GSE233431_Upar_mouse.h5ad")
+adata_mouse = sc.read_h5ad("GSE233431_Upar_mouse.h5ad")
 sc.pp.normalize_total(adata_mouse, target_sum=1e4)
 sc.pp.log1p(adata_mouse)
 
@@ -329,7 +329,7 @@ auc_df.to_csv("PCLS_AUROC.csv", index=False)
 # 4. GSE190889 - HUMAN IPF
 # ============================================================
 
-adata = sc.read_h5ad("Benchmark Data/GSE190889_IPF_human.h5ad")
+adata = sc.read_h5ad("GSE190889_IPF_human.h5ad")
 
 # DeepScence
 adata.obs["b"] = adata.obs["clusters"]
@@ -506,7 +506,7 @@ auc_df.to_csv("Microglia_AUROC.csv", index=False)
 # 6. GSE172410 - SKELETAL MUSCLE
 # ============================================================
 
-adata = sc.read_h5ad("Benchmark Data/GSE172410_muscle_human.h5ad")
+adata = sc.read_h5ad("GSE172410_muscle_human.h5ad")
 
 # DeepScence
 adata.obs["b"] = adata.obs["clusters"]
