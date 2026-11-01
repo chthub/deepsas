@@ -1,6 +1,6 @@
-# Recorded installed packages from the EXISTING ice-python environment.
+
 # Python 3.10.20. This is an inventory of the environment used,
-# not a newly created/tested installation or a dependency-resolved lockfile.
+
 anndata==0.11.4
 array-api-compat==1.14.0
 contourpy==1.3.2
