@@ -1,6 +1,6 @@
-# Recorded installed packages from the EXISTING senepy environment.
+
 # Python 3.9.25. This is an inventory of the environment used,
-# not a newly created/tested installation or a dependency-resolved lockfile.
+
 asttokens==3.0.1
 comm==0.2.3
 debugpy==1.8.20
