@@ -1,6 +1,6 @@
-# Recorded installed packages from the EXISTING sencid environment.
+
 # Python 3.6.13. This is an inventory of the environment used,
-# not a newly created/tested installation or a dependency-resolved lockfile.
+
 absl-py==0.15.0
 anndata==0.7.8
 astunparse==1.6.3
