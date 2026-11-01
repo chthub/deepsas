@@ -1,6 +1,6 @@
-# Recorded installed packages from the EXISTING deepscence environment.
+
 # Python 3.8.20. This is an inventory of the environment used,
-# not a newly created/tested installation or a dependency-resolved lockfile.
+
 absl-py==2.3.1
 anndata==0.9.2
 asttokens==3.0.1
