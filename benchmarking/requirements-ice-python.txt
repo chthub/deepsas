@@ -1,0 +1,38 @@
+# Recorded installed packages from the EXISTING ice-python environment.
+# Python 3.10.20. This is an inventory of the environment used,
+# not a newly created/tested installation or a dependency-resolved lockfile.
+anndata==0.11.4
+array-api-compat==1.14.0
+contourpy==1.3.2
+cycler==0.12.1
+decorator==5.2.1
+deprecated==1.3.1
+exceptiongroup==1.3.1
+fonttools==4.62.0
+future==1.0.0
+graphtools==1.5.3
+h5py==3.16.0
+joblib==1.5.3
+kiwisolver==1.5.0
+magic-impute==3.0.0
+matplotlib==3.10.8
+natsort==8.4.0
+numpy==1.26.4
+packaging==26.0
+pandas==2.0.3
+pillow==12.1.1
+pip==26.0.1
+pyparsing==3.3.2
+python-dateutil==2.9.0.post0
+pytz==2026.1.post1
+scikit-learn==1.7.2
+scipy==1.15.2
+scprep==1.2.3
+six==1.17.0
+tasklogger==1.2.0
+threadpoolctl==3.6.0
+typing-extensions==4.15.0
+tzdata==2026.1
+unicodedata2==17.0.1
+wheel==0.46.3
+wrapt==2.1.2
