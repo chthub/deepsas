@@ -189,8 +189,8 @@ def parse_args():
                              'refinement iterations; reaching this limit is '
                              'reported separately from convergence.')
     parser.add_argument('--convergence_tol', type=float, default=0.9,
-                        help='Jaccard tolerance for SnC and SnG sets between '
-                             'adjacent iterations. The loop exits when both '
+                        help='Jaccard tolerance (default: 0.9) for SnC and SnG '
+                             'sets between adjacent iterations. The loop exits when both '
                              'Jaccard(SnC_t-1, SnC_t) >= tol and '
                              'Jaccard(SnG_t-1, SnG_t) >= tol.')
 

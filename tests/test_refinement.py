@@ -91,7 +91,7 @@ class ModelInterfaceTests(unittest.TestCase):
         self.assertTrue(args.type_specific_projections)
         self.assertFalse(hasattr(args, 'ccc_aggregation'))
         self.assertEqual(args.sng_update_mode, 'iqr')
-        self.assertEqual(args.min_snc_per_type, 1)
+        self.assertEqual(args.min_snc_per_type, 10)
         self.assertEqual(args.min_genes_per_cell, 200)
         self.assertEqual(args.min_cells_per_gene, 10)
         self.assertEqual(args.normalization_target_sum, 1e4)
@@ -253,6 +253,29 @@ class GeneUpdateTests(unittest.TestCase):
 
 
 class ConvergenceTests(unittest.TestCase):
+    def test_cli_convergence_default_is_point_nine_for_all_modes(self):
+        for options in ([], ['--phenotype_aware']):
+            with self.subTest(options=options):
+                with patch('sys.argv', [
+                        'deepsas_v1.py', '--exp_name', 'test'] + options):
+                    args = utils.parse_args()
+                self.assertEqual(args.convergence_tol, 0.9)
+                status, _, _ = candidate_convergence(
+                    range(10), range(9), range(10), range(9),
+                    args.convergence_tol)
+                self.assertEqual(status, 'converged')
+                status, _, _ = candidate_convergence(
+                    range(10), range(8), range(10), range(9),
+                    args.convergence_tol)
+                self.assertEqual(status, 'running')
+
+    def test_cli_convergence_tolerance_can_be_overridden(self):
+        with patch('sys.argv', [
+                'deepsas_v1.py', '--exp_name', 'test',
+                '--convergence_tol', '0.99']):
+            args = utils.parse_args()
+        self.assertEqual(args.convergence_tol, 0.99)
+
     def test_empty_sets_are_never_normal_convergence(self):
         status, jc, jg = candidate_convergence([], [], [1], [1], 0.99)
         self.assertEqual(status, 'empty_candidates')

@@ -1,0 +1,40 @@
+# DeepSAS reference environment: Python 3.8.20, Linux x86_64, CUDA 12.1.
+# Install in a fresh environment: uv pip install -r requirements.txt
+# These wheel sources and local-version pins must change together for other
+# CUDA versions, CPU-only systems, or macOS. See README.md.
+--find-links https://download.pytorch.org/whl/cu121/torch/
+--find-links https://data.pyg.org/whl/torch-2.4.0+cu121.html
+
+# Scientific stack (including compatibility-sensitive Scanpy dependencies).
+numpy==1.24.4
+scipy==1.10.1
+pandas==2.0.3
+anndata==0.9.2
+h5py==3.11.0
+scanpy[leiden]==1.9.8
+igraph==0.11.8
+leidenalg==0.10.2
+numba==0.58.1
+llvmlite==0.41.1
+pynndescent==0.6.0
+umap-learn==0.5.7
+scikit-learn==1.3.2
+networkx==3.1
+
+# PyTorch and matching precompiled PyG extensions.
+torch==2.4.0+cu121
+torch-geometric==2.6.1
+pyg-lib==0.4.0+pt24cu121
+torch-scatter==2.1.2+pt24cu121
+torch-sparse==0.6.18+pt24cu121
+torch-cluster==1.6.3+pt24cu121
+torch-spline-conv==1.2.2+pt24cu121
+
+# Reporting, enrichment, and the bundled notebook.
+matplotlib==3.7.5
+seaborn==0.13.2
+gseapy==1.0.6
+tabulate==0.9.0
+linetimer==0.1.5
+tqdm==4.70.0
+ipykernel==6.29.5

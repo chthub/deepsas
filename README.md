@@ -41,18 +41,28 @@ This project is developed and tested on Linux and macOS environments.
    uv venv --python 3.8.20
    source .venv/bin/activate
    ```
-3. **Install Dependencies**:
+3. **Install Pinned Dependencies**:
 
    ```bash
-   uv pip install numpy seaborn matplotlib pandas tabulate linetimer scikit-learn ipykernel 'scanpy[leiden]' tqdm gseapy
+   uv pip install -r requirements.txt
+   uv pip check
    ```
 
-   For [Pytorch](https://pytorch.org/) and [PyG](https://pytorch-geometric.readthedocs.io/en/latest/install/installation.html),  ensure you select the CUDA version that best suits your system. Below is an example from our test environment:
+   [`requirements.txt`](./requirements.txt) pins the DeepSAS runtime, notebook
+   tools, and key scientific dependencies to versions in our compatible test
+   environment: **Python 3.8.20, Linux x86_64, PyTorch 2.4.0, CUDA 12.1, and
+   PyG 2.6.1**. It includes matching prebuilt PyTorch/PyG wheel sources to avoid
+   compiling extensions or mixing incompatible builds. Use a fresh environment;
+   the NVIDIA driver must support CUDA 12.1.
 
-   ```bash
-   uv pip install torch==2.4.0 torchvision==0.19.0 torchaudio==2.4.0 --index-url https://download.pytorch.org/whl/cu121
-   uv pip install torch_geometric pyg_lib torch_scatter torch_sparse torch_cluster torch_spline_conv -f https://data.pyg.org/whl/torch-2.4.0+cu121.html
-   ```
+   These CUDA-specific wheels do not target macOS or CPU-only installations.
+   For those platforms or a different CUDA version, adapt the PyTorch and PyG
+   wheel sources and build pins together using the
+   [PyTorch](https://pytorch.org/) and
+   [PyG](https://pytorch-geometric.readthedocs.io/en/latest/install/installation.html)
+   installation guides. Dependencies for the comparison methods are kept in
+   separate `benchmarking/requirements-*.txt` files; do not install them into
+   the DeepSAS environment.
 
 ## Quick Start
 
@@ -350,7 +360,7 @@ lowest-scoring current candidates (or all available genes when either side has
 fewer than ten). Candidate IDs remain unique. The default `iqr` mode uses the
 threshold-driven rule described above.
 
-After updating embeddings, attention, and genes, SnC labels are recalculated to produce a complete iteration state. Outer convergence uses `J(A, B) = |A ∩ B| / |A ∪ B|` between adjacent completed states: both SnC and SnG Jaccard values must reach `--convergence_tol`, and both previous and current sets must be nonempty. The default tolerance is `0.9`; `--convergence_tol 1` requests exact membership equality. Loss is optimized within each iteration; it is not the outer stopping criterion. In `fixed10` mode, compulsory gene turnover can keep the SnG Jaccard below `1`, while `iqr` mode can make zero replacements and attain exact stability. Convergence is not guaranteed within the iteration limit. Ideally, the model is considered to have converged if the candidate set remains unchanged between consecutive iterations. However, in practice, we have observed fluctuations where individual genes or cells repeatedly enter and exit the set. In such cases, the Jaccard similarity may fail to reach 0.99 even though the model has attained a stable state.
+After updating embeddings, attention, and genes, SnC labels are recalculated to produce a complete iteration state. Outer convergence uses `J(A, B) = |A ∩ B| / |A ∪ B|` between adjacent completed states: both SnC and SnG Jaccard values must reach `--convergence_tol`, and both previous and current sets must be nonempty. The default tolerance is `0.9`; `--convergence_tol 1` requests exact membership equality. Loss is optimized within each iteration; it is not the outer stopping criterion. In `fixed10` mode, compulsory gene turnover can keep the SnG Jaccard below `1`, while `iqr` mode can make zero replacements and attain exact stability. Convergence is not guaranteed within the iteration limit. Individual genes or cells can enter and exit the candidate sets between iterations, so the default `0.9` threshold allows limited membership changes rather than requiring identical sets.
 
 ## Output Files
 

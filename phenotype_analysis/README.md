@@ -20,7 +20,7 @@ phenotype, then uses the union of both selections. Both use the configured
 `--iqr_multiplier`. `--min_snc_per_type` and
 `--min_snc_per_phenotype` control the respective minimum retained group sizes.
 SnG updating and stopping continue to use `--sng_update_mode`, `--max_iter`, and
-`--convergence_tol` from the main pipeline.
+`--convergence_tol` from the main pipeline (default tolerance: `0.9`).
 
 ## Run
 
