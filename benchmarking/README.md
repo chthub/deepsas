@@ -12,7 +12,6 @@ The benchmarking tools were run using different Conda environments. Each tool ra
 | decoupler and AUROC evaluation | Decoupler | 3.10.18 | requirements-decoupler.txt |
 | ICE Python backend and MAGIC | ice | 3.10.20 | requirements-ice-python.txt |
 
-Each requirements file records the installed package versions in the existing environment actually used. These are environment inventories.
 
 ## How the tools were run
 
