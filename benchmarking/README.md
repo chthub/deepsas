@@ -1,6 +1,12 @@
 # Benchmarking tools and environments
 
-The benchmarking tools were run using different Conda environments. Each tool ran in its own environment, and the resulting scores were aligned by cell barcode for AUROC evaluation.
+The benchmarking tools were run using different Conda environments. Each tool ran in its own environment and installed according to it's own instruction, and the resulting scores were aligned by cell barcode for AUROC evaluation.
+
+DeepScence : https://github.com/anthony-qu/DeepScence
+SenCID : https://github.com/JackieHanLab/SenCID
+SenePy : https://github.com/jaleesr/senepy
+decoupler : https://pypi.org/project/decoupler/
+ICE : https://github.com/pxulab/ICE
 
 ## Environments and requirements
 
