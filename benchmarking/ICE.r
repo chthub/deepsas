@@ -36,7 +36,7 @@ normalized_data<-as.matrix(SeuratObject@assays$RNA$data)
 class(normalized_data)
 dim(normalized_data)
 
-deepsas_gene<-read.csv('Senescence Genes predicted by DeepSAS/PCLS_Gene_table2.csv')
+deepsas_gene<-read.csv('Senescence Genes predicted by DeepSAS/PCLS_table2ByGenecsv')
 head(deepsas_gene)
 deepsas_gene<-list('DeepSAS_gene'=deepsas_gene$gene)
 library(AUCell)
