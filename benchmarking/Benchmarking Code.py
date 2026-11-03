@@ -244,6 +244,7 @@ auc_df.to_csv("uPAR_AUROC.csv", index=False)
 adata = sc.read_h5ad("PCLS_adata.h5ad")
 
 # DeepScence
+sc.pp.filter_genes(adata, min_cells=3)
 adata.obs["b"] = adata.obs["Clusters"]
 dca(adata)
 adata = DeepScence(adata, binarize=True, species="human")
