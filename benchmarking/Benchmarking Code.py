@@ -506,7 +506,7 @@ auc_df.to_csv("Microglia_AUROC.csv", index=False)
 # 6. GSE172410 - SKELETAL MUSCLE
 # ============================================================
 
-adata = sc.read_h5ad("Benchmark Data/GSE172410_muscle_human.h5ad")
+adata = sc.read_h5ad("GSE172410_muscle_human.h5ad")
 
 # DeepScence
 adata.obs["b"] = adata.obs["clusters"]
