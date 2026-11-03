@@ -245,6 +245,7 @@ adata = sc.read_h5ad("PCLS_adata.h5ad")
 
 # DeepScence
 adata.obs["b"] = adata.obs["Clusters"]
+dca(adata)
 adata = DeepScence(adata, binarize=True, species="human")
 
 # SenCID
