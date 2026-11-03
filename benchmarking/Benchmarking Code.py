@@ -299,7 +299,7 @@ adata.obs["ICE_deepsas"] = ICE_result_deepsas["DeepSAS_gene"].reindex(adata.obs_
 adata.obs["aucell_deepsas"] = AUCell_result_deepsas["seu$DeepSAS_AUCell"].reindex(adata.obs_names)
 
 # Epithelial cells
-adata_eval = adata[adata.obs["clusters"] == "Epithelial"].copy()
+adata_eval = adata[adata.obs["Cellinage"] == "Epithelial"].copy()
 
 # AUROC
 metrics = [
