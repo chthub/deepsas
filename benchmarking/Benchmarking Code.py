@@ -335,7 +335,7 @@ adata = sc.read_h5ad("Benchmark Data/GSE190889_IPF_human.h5ad")
 
 # DeepScence
 adata.obs["b"] = adata.obs["clusters"]
-sc.pp.filter_genes(adata, min_cells=1)
+sc.pp.filter_genes(adata, min_cells=3)
 dca(adata)
 adata = DeepScence(adata, binarize=True, species="human")
 
