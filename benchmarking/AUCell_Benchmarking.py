@@ -277,7 +277,7 @@ print("PCLS: AUROC saved")
 # GSE190889: IPF
 # ============================================================
 
-adata = sc.read_h5ad("Benchmark Data/GSE190889_IPF_human.h5ad")
+adata = sc.read_h5ad("GSE190889_IPF_human.h5ad")
 assert adata.obs_names.is_unique, "Duplicate AnnData barcodes"
 
 scores = pd.read_csv(OUT / "GSE190889_DeepScence.csv", index_col=0)
