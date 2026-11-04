@@ -28,7 +28,7 @@ Each tool must be installed in its corresponding Conda environment to avoid pack
 | decoupler and AUROC evaluation | Decoupler | 3.10.18 | requirements-decoupler.txt |
 | ICE Python backend and MAGIC | ice | 3.10.20 | requirements-ice-python.txt |
 
-### Environment installation
+### Environment installation (it is recommended to use the installation instructions provided in each tool's GitHub repository)
 
 Create each environment using its specified Python version and install the corresponding requirements.
 
