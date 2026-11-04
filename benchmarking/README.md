@@ -42,7 +42,7 @@ pip install -r requirements-deepscence.txt
 
 Repeat the same procedure for the remaining tools using their respective environment names, Python versions, and requirements files.
 
-Follow the installation instructions provided in each tool's GitHub repository for any additional dependencies.
+Follow the installation instructions provided in each tool's GitHub repository for any additional dependencies or issues.
 
 ## 3. Input datasets
 
@@ -82,7 +82,7 @@ Activate the DeepScence environment and run:
 
 ```bash
 conda activate deepscence
-python DeepScence.py
+python run_deepscence.py
 ```
 
 DeepScence is executed using the human model with binarization enabled.
@@ -110,7 +110,6 @@ SenCID evaluates all six SID models using:
 
 SenCID independently loads the original raw-count AnnData files. This prevents preprocessing performed by DeepScence from affecting SenCID predictions.
 
-The continuous `SID_Score` is extracted using the model specified in the original benchmarking code.
 
 | Dataset | Selected SID model |
 |---|---|
@@ -152,7 +151,7 @@ The script generates six CSV files containing:
 - `senpey_universal`
 - `senpey_specific`
 
-For GSE253338, the tissue-specific score is unavailable in the original benchmarking code and is represented by missing values.
+For GSE253338, the tissue-specific score is unavailable and is represented by missing values.
 
 ### 4.4 AUCell and AUROC benchmarking
 
@@ -209,7 +208,7 @@ The following metrics are evaluated:
 | `ICE_deepsas` | ICE DeepSAS |
 | `aucell_deepsas` | R AUCell DeepSAS |
 
-AUROC results are exported as CSV files for downstream analysis.
+AUROC results are exported as CSV files for visualization.
 
 ## 5. R environment: ICE and AUCell
 
