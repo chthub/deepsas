@@ -2,7 +2,7 @@
 
 This directory contains the scripts and environment requirements used to benchmark DeepSAS against existing senescence detection methods.
 
-To ensure reproducibility and avoid dependency conflicts, each benchmarking tool was executed independently in its own Conda environment. Each script loads the original AnnData dataset, performs the preprocessing required by the corresponding method, and exports continuous senescence scores as CSV files. The resulting scores are subsequently integrated by cell barcode for AUROC evaluation.
+To ensure reproducibility and avoid dependency conflicts, each benchmarking tool was executed independently in its own Conda environment. Each script loads the  AnnData dataset, performs the preprocessing required by the corresponding method, and exports continuous senescence scores as CSV files. The resulting scores are subsequently integrated by cell barcode for AUROC evaluation.
 
 **No intermediate AnnData files are saved or required.**
 
@@ -67,8 +67,8 @@ The scripts use the dataset-specific file paths specified in the benchmarking co
 
 The benchmarking workflow consists of four independent Python scripts:
 
-1. `DeepScence.py`
-2. `SenCID.py`
+1. `run_deepscence.py`
+2. `run_sencid.py`
 3. `SenePy.py`
 4. `AUCell_Benchmarking.py`
 
@@ -97,7 +97,7 @@ Activate the SenCID environment and run:
 
 ```bash
 conda activate SenCID
-python SenCID.py
+python run_sencid.py
 ```
 
 SenCID evaluates all six SID models using:
@@ -274,10 +274,10 @@ Execute the following commands in sequence:
 
 ```bash
 conda activate deepscence
-python DeepScence.py
+python run_deepscence.py
 
 conda activate SenCID
-python SenCID.py
+python run_sencid.py
 
 conda activate senepy
 python SenePy.py
