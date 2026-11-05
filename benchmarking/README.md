@@ -4,6 +4,10 @@ This directory contains the scripts and environment requirements used to benchma
 
 To ensure reproducibility and avoid dependency conflicts, each benchmarking tool was executed independently in its own Conda environment. Each script loads the  AnnData dataset, performs the preprocessing required by the corresponding method, and exports continuous senescence scores as CSV files. The resulting scores are subsequently integrated by cell barcode for AUROC evaluation.
 
+### Computational Environment
+
+Benchmarking of comparator methods was performed on the Ohio Supercomputer Center (OSC) using CPU-based high-performance computing resources running Red Hat Enterprise Linux 9.6 (x86_64 architecture). The compute node was equipped with AMD EPYC 7H12 64-Core processors and 503 GiB of system memory. All comparator methods were executed without GPU acceleration using method-specific Conda environments. Software dependencies, package versions, and installation and execution instructions are provided in this repository to facilitate independent reproducibility.
+
 **No intermediate AnnData files are saved or required.**
 
 ## 1. Benchmarking tools
