@@ -70,9 +70,11 @@ The benchmarking workflow consists of four independent Python scripts:
 1. `run_deepscence.py`
 2. `run_sencid.py`
 3. `SenePy.py`
-4. `AUCell_Benchmarking.py`
+4. `ICE.r`
+5. `AUCell_Benchmarking.py`
 
-The first three scripts can be executed independently in any order. Each produces one CSV file per dataset.
+
+The first four scripts can be executed independently in any order. Each produces one CSV file per dataset.
 
 The final script combines these outputs, calculates AUCell scores, integrates existing ICE and R AUCell results, and performs AUROC evaluation.
 
@@ -153,7 +155,15 @@ The script generates six CSV files containing:
 
 For GSE253338, the tissue-specific score is unavailable and is represented by missing values.
 
-### 4.4 AUCell and AUROC benchmarking
+### 4.4 ICE
+
+```bash
+ml gcc/12.3.0 R/4.4.0
+Rscript ICE.r
+```
+
+
+### 4.5 AUCell and AUROC benchmarking
 
 After completing DeepScence, SenCID, and SenePy, activate the Decoupler environment:
 
@@ -170,7 +180,7 @@ Each dataset is independently loaded from its original `.h5ad` file.
 
 **Step 2: Integrate benchmarking scores**
 
-The DeepScence, SenCID, and SenePy CSV files are loaded and their scores are aligned to the original AnnData observations using cell barcodes.
+The DeepScence, SenCID, SenePy, and ICE CSV files are loaded and their scores are aligned to the original AnnData observations using cell barcodes.
 
 Scores are matched by barcode rather than row position to prevent incorrect cell assignments.
 
