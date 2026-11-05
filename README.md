@@ -157,7 +157,7 @@ DeepSAS works with h5ad format (AnnData objects from Scanpy). The input data sho
 - Cell type annotations in `adata.obs['clusters']` or another specified column
 - (Optional) Additional metadata like batch information for batch effect correction
 
-The input expression data should be normalized counts (not log-transformed). DeepSAS handles normalization and scaling using scanpy functions. Batch correction is optional and enabled with `--batch_remove`.
+DeepSAS expects raw, unnormalized gene-expression counts in adata.X. DeepSAS handles normalization and scaling using scanpy functions. Batch correction is optional and enabled with `--batch_remove`.
 
 `adata.var_names` must hold gene symbols in the same nomenclature as the
 senescence marker list. The bundled list uses human HGNC symbols (`CDKN1A`);
