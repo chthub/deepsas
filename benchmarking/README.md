@@ -316,3 +316,20 @@ To maintain consistency:
 - AUROC is calculated only when both positive and negative classes are represented among cells with valid scores.
 
 This workflow separates tool execution from benchmarking evaluation, reduces dependency conflicts, and allows individual methods to be rerun without repeating the entire analysis.
+
+### Mouse-to-Human Gene Ortholog Conversion
+
+For benchmarking methods that require human gene symbols, mouse datasets are converted to their human orthologs using `Mouse-to-human.py`. The script uses the `gprofiler` Python package to map mouse genes to human orthologs.
+
+**Run the conversion:**
+
+```bash
+pip install gprofiler-official
+python Mouse-to-human.py
+```
+
+The script automatically processes three datasets: `GSE172410_muscle_mouse.h5ad`, `GSE233431_Upar_mouse.h5ad`, and `GSE253338_P16_bladder_mouse.h5ad`.
+
+The converted files are saved with the `_human.h5ad` suffix in the same directory. Genes without valid mappings are excluded, and duplicate human gene symbols are made unique. The original mouse datasets remain unchanged.
+
+**Note:** An internet connection is required to access the g:Profiler orthology service. The conversion only updates gene identifiers; cell-level metadata and expression values for retained genes are preserved.
