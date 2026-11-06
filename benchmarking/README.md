@@ -32,6 +32,18 @@ Each tool must be installed in its corresponding Conda environment to avoid pack
 | decoupler and AUROC evaluation | Decoupler | 3.10.18 | requirements-decoupler.txt |
 | ICE Python backend and MAGIC | ice | 3.10.20 | requirements-ice-python.txt |
 
+### Software Versions
+
+The following versions were used for benchmarking to ensure reproducibility:
+
+| Tool | Version |
+|---|---|
+| decoupler | 2.1.4 |
+| SenCID | 1.0.0 |
+| SenePy | 1.0.1 |
+| DeepScence | 1.0.0 |
+
+Each tool was installed and executed in its corresponding Conda environment, as described in the installation instructions.
 ### Environment installation (it is recommended to use the installation instructions provided in each tool's GitHub repository)
 
 Create each environment using its specified Python version and install the corresponding requirements.
